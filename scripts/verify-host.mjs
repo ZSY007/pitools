@@ -94,6 +94,47 @@ async function verify(themeName, mode) {
     await ext.shortcuts.get('alt+t').handler(ctx); assert.equal(widget, undefined);
     await emit('message_start', { message: { role: 'user', content: 'hidden event' } });
     await command('toggle'); await command('live'); assert.ok(strip(widget.render(80).join('\n')).includes('hidden event'));
+    // 0.1.10: cache hits skip serialization; event revisions catch SAME-object
+    // mutations. Width/raw/theme/invalidate are independent invalidation paths.
+    let serializations = 0;
+    const cachedResult = { content: [{ type: 'text', text: 'CACHE-OLD' }], toJSON() { serializations++; return { content: this.content }; } };
+    await emit('tool_execution_start', { toolCallId: 'cache-probe', toolName: 'bash', args: { command: 'cache-probe' } });
+    await emit('tool_execution_update', { toolCallId: 'cache-probe', partialResult: cachedResult });
+    await command('live');
+    const cachePending = command(''); inspector.handleInput('\t'); inspector.handleInput('\t');
+    let count = serializations;
+    assert.ok(strip(inspector.render(160).join('\n')).includes('CACHE-OLD'));
+    assert.equal(serializations, count + 1, 'result JSON must be serialized exactly once on a miss');
+    count = serializations;
+    inspector.render(160); inspector.handleInput('\x1b[B'); inspector.render(160);
+    assert.equal(serializations, count, 'render and scroll must reuse unchanged body');
+    cachedResult.content[0].text = 'CACHE-SAME-OBJECT-NEW';
+    await emit('tool_execution_update', { toolCallId: 'cache-probe', partialResult: cachedResult });
+    assert.ok(strip(inspector.render(160).join('\n')).includes('CACHE-SAME-OBJECT-NEW'));
+    assert.equal(serializations, ++count, 'same-reference updates must invalidate by revision');
+    inspector.handleInput('r'); inspector.render(160); assert.equal(serializations, ++count);
+    inspector.render(80); assert.equal(serializations, ++count);
+    inspector.invalidate(); inspector.render(80); assert.equal(serializations, ++count);
+    const otherTheme = loadThemeFromPath(path.join(host, 'dist/modes/interactive/theme', `${themeName === 'light' ? 'dark' : 'light'}.json`), mode);
+    setThemeInstance(otherTheme);
+    try { inspector.render(80); assert.equal(serializations, ++count, 'stable theme proxy/global palette changes invalidate'); }
+    finally { setThemeInstance(theme); }
+    await emit('tool_execution_end', { toolCallId: 'cache-probe', toolName: 'bash', result: cachedResult, isError: false });
+    inspector.render(80); assert.equal(serializations, ++count, 'finalization invalidates');
+    inspector.handleInput('\x1b'); await cachePending;
+    const reopened = command(''); inspector.handleInput('\t'); inspector.handleInput('\t');
+    inspector.render(80); assert.equal(serializations, ++count, 'new inspector has no stale retained entry');
+    inspector.handleInput('\x1b'); await reopened;
+    const cachedMessage = { role: 'assistant', content: [{ type: 'text', text: 'MODEL-CACHE-OLD' }], usage: { output: 1 } };
+    await emit('message_start', { message: cachedMessage });
+    await emit('message_update', { message: cachedMessage, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'MODEL-CACHE-OLD' } });
+    await command('live'); const modelCachePending = command(''); inspector.handleInput('\t');
+    assert.ok(strip(inspector.render(160).join('\n')).includes('MODEL-CACHE-OLD'));
+    cachedMessage.content[0].text = 'MODEL-CACHE-NEW';
+    await emit('message_update', { message: cachedMessage, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'MODEL-CACHE-NEW' } });
+    assert.ok(strip(inspector.render(160).join('\n')).includes('MODEL-CACHE-NEW'));
+    await emit('message_end', { message: cachedMessage });
+    inspector.handleInput('\x1b'); await modelCachePending;
     // Empty/signature-only reasoning: live placeholder, final removal, notes,
     // interrupted cleanup, and historical replay all use the same policy.
     const onlyEmpty = { role: 'assistant', content: [{ type: 'thinking', thinking: '', thinkingSignature: 'opaque' }] };

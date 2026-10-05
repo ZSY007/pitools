@@ -3,7 +3,7 @@
 // Copyright (c) 2026, chimney (ccch1mneyyy); see data/activity/LICENSE.
 import { safeText } from './core.ts';
 import { PHRASES, FRAME_DATA, ACTIVITY_DATA_VERSION } from './data/activity/data.ts';
-export const ACTIVITY_VERSION = '0.1.9';
+export const ACTIVITY_VERSION = '0.1.10';
 export { ACTIVITY_DATA_VERSION };
 export const FRAME_NAMES = Object.keys(FRAME_DATA.presets);
 export const DEFAULT_ACTIVITY = { enabled: true, frames: 'moon8', lang: 'zh', narrate: true, contract: true, phrases: true };

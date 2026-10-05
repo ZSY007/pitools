@@ -1,5 +1,5 @@
 // Pure state and display helpers. No filesystem, networking, or process access.
-export const CORE_VERSION = '0.1.9';
+export const CORE_VERSION = '0.1.10';
 export function safeText(value) {
   return String(value ?? '').replace(/\r\n?/g, '\n').replace(/\t/g, '    ')
     .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069]/g, '');
@@ -74,6 +74,7 @@ export function timingInfo(record, now = Date.now()) {
 export class TraceStore {
   constructor(limit = 2000) { this.limit = limit; this.reset(); }
   reset() { this.records = []; this.calls = new Map(); this.turn = 0; this.dropped = 0; this.hiddenThinking = 0; }
+  touch(record) { record.revision = (record.revision ?? 0) + 1; }
   remove(record) {
     const index = this.records.indexOf(record);
     if (index < 0) return;
@@ -81,6 +82,7 @@ export class TraceStore {
     if (record.kind === 'tool' && this.calls.get(record.id) === record) this.calls.delete(record.id);
   }
   add(record) {
+    record.revision = 0;
     this.records.push(record);
     // Never evict running operations, even with a very large parallel batch.
     while (this.records.length > this.limit) {
@@ -96,6 +98,7 @@ export class TraceStore {
     let r = this.calls.get(id);
     if (!r) { r = this.add({ kind: 'tool', id, name, args, turn: this.turn, start: now, live: true, parent }); this.calls.set(id, r); }
     else Object.assign(r, { name, args, start: now, live: true, parent });
+    this.touch(r);
     return r;
   }
   end(id, name, result, error, now = Date.now()) {
@@ -107,6 +110,7 @@ export class TraceStore {
     }
     Object.assign(r, { result, error, live: false, end: now });
     if (r.start !== undefined) r.elapsed = Math.max(0, now - r.start);
+    this.touch(r);
     return r;
   }
   restore(entries) {
@@ -151,5 +155,30 @@ export class TraceStore {
       if (Number.isFinite(t.start) && t.start > 0 && t.start < 8640000000000000) r.start = t.start;
       if (Number.isFinite(t.end) && t.end >= (r.start ?? 0) && t.end < 8640000000000000) r.end = t.end;
     }
+  }
+}
+
+/** One inspector-owned entry, bounded by estimated UTF-16/array storage.
+ * The budget limits derived lines, not Pi's original data or total process RSS.
+ * A miss clears the old entry before building, so it cannot pin old records.
+ */
+export class DetailCache {
+  constructor(maxBytes = 8 * 1024 * 1024) {
+    this.maxBytes = Number.isFinite(maxBytes) ? Math.max(0, maxBytes) : 0;
+    this.clear();
+  }
+  clear() { this.key = undefined; this.lines = undefined; this.bytes = 0; }
+  render(key, build) {
+    if (this.key && key.length === this.key.length && key.every((v, i) => Object.is(v, this.key[i]))) return this.lines;
+    this.clear();
+    const lines = build();
+    let bytes = 256 + key.length * 16;
+    for (const value of key) if (typeof value === 'string') bytes += value.length * 2;
+    for (const line of lines) {
+      bytes += 64 + line.length * 2;
+      if (bytes > this.maxBytes) return lines; // Full render; simply do not retain it.
+    }
+    if (bytes <= this.maxBytes) { this.key = [...key]; this.lines = lines; this.bytes = bytes; }
+    return lines;
   }
 }

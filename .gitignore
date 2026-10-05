@@ -17,3 +17,7 @@ models.json
 # Keep machine-specific repair/audit notes locally, not in the public repository.
 /docs/*
 !/docs/installation.md
+!/docs/current-performance-analysis.md
+!/docs/current-performance-measurement.md
+!/docs/python-migration.md
+!/docs/0.1.10-render-optimization.md

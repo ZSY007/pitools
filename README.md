@@ -4,7 +4,7 @@
 
 **Pi 终端里的轨迹、工具调用详情和工作状态。** Windows / macOS，终端原生，不打开浏览器。
 
-当前版本 **0.1.9**。独立实现，界面参考 DeepSeek Harness 的 Trajectory；不依赖或执行 Harness、pi-timeline-widget、pi-trajectory 或 dsh 插件。
+当前版本 **0.1.10**。独立实现，界面参考 DeepSeek Harness 的 Trajectory。
 
 ## 安装与更新
 
@@ -104,6 +104,18 @@ Mac 的 Option 键可能默认输入特殊字符；可以在终端中设置为 M
 
 工具参数/结果本身可能包含敏感内容，分享截图或提交 issue 前请检查；没有自动脱敏。仓库不包含真实会话、账号、日志或机器配置。
 
+## 0.1.10 渲染优化
+
+结果详情不再重复序列化；内容页签复用未变正文，滚动/月相更新无需重新高亮全文。缓存随更新事件 revision、宽度、模式、主题与组件 invalidate 失效；单条目、8 MiB 估算预算，超预算仍完整显示但不缓存。概述/计时/Schema 保持动态。
+
+指定 64 KiB 结果详情的隔离对照约 **23.77 ms → 0.83 ms/帧**，渲染输出一致；不是整体 CPU 减少 96% 或总内存保证。实现与验证边界见 [0.1.10 优化记录](docs/0.1.10-render-optimization.md)。
+
+## 技术文档
+
+- [当前 0.1.9 性能分析](docs/current-performance-analysis.md)：目前代码的 CPU/内存热点、已有保护及优化顺序；静态分析，不冒充实测。
+- [当前性能 Windows 隔离实测](docs/current-performance-measurement.md)：受控堆增量、详情/流式耗时、异常刷新复现与临时缓存对照；不等于真实会话精确独占占用。
+- [Python 核心替换技术思路](docs/python-migration.md)：接口层分工、内部协议、兼容性、安全边界和分阶段实施；尚未重构。
+
 ## 开发与验证
 
 ```sh
@@ -112,7 +124,7 @@ cd pitools
 npm test
 ```
 
-23 项单元测试无需 npm install。CI 在 Windows / macOS / Linux 上使用 Node 24 运行这些纯数据测试，不访问真实模型或用户会话。
+28 项单元测试无需 npm install。CI 在 Windows / macOS / Linux 上使用 Node 24 运行这些纯数据测试，不访问真实模型或用户会话。
 
 实际宿主回归需设置 `PI_HOST_ROOT` 为已安装的 `@earendil-works/pi-coding-agent` 包目录：
 

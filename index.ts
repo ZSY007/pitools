@@ -1,23 +1,23 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from '@earendil-works/pi-coding-agent';
 import { Input, matchesKey, parseColor, truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
-import { TraceStore, safeText, json, summary, duration, contentText, emptyThinking, missingThinkingCount, validTimestamp, validModelTiming, timingInfo, CORE_VERSION } from './core.ts';
-import { renderDetail, RENDERER_VERSION } from './rendering.ts';
+import { TraceStore, DetailCache, safeText, json, summary, duration, contentText, emptyThinking, missingThinkingCount, validTimestamp, validModelTiming, timingInfo, CORE_VERSION } from './core.ts';
+import { renderDetail, detailThemeKey, RENDERER_VERSION } from './rendering.ts';
 
 import { ActivityState, normalizeActivity, restoreActivityConfig, narrationContract, FRAME_NAMES, ACTIVITY_VERSION, ACTIVITY_DATA_VERSION } from './activity.ts';
 
-const VERSION = '0.1.9';
+const VERSION = '0.1.10';
 
 export default function pitools(pi: ExtensionAPI) {
   // Fail once at load time, before any stream handlers/timers are registered,
   // rather than flooding every message with missing-function exceptions.
-  const required = { TraceStore, safeText, json, summary, duration, contentText, emptyThinking, missingThinkingCount, validTimestamp, validModelTiming, timingInfo, renderDetail, ActivityState, normalizeActivity, restoreActivityConfig, narrationContract };
+  const required = { TraceStore, DetailCache, safeText, json, summary, duration, contentText, emptyThinking, missingThinkingCount, validTimestamp, validModelTiming, timingInfo, renderDetail, detailThemeKey, ActivityState, normalizeActivity, restoreActivityConfig, narrationContract };
   const missing = Object.entries(required).filter(([, value]) => typeof value !== 'function').map(([name]) => name);
   if (missing.length || CORE_VERSION !== VERSION || RENDERER_VERSION !== VERSION || ACTIVITY_VERSION !== VERSION || ACTIVITY_DATA_VERSION !== VERSION) {
     throw new Error(`pitools 模块版本不一致：入口 ${VERSION}，核心 ${CORE_VERSION ?? '未知'}，渲染 ${RENDERER_VERSION ?? '未知'}，活动 ${ACTIVITY_VERSION ?? '未知'}，数据 ${ACTIVITY_DATA_VERSION ?? '未知'}${missing.length ? `；缺少 ${missing.join(', ')}` : ''}。请替换完整插件目录后 /reload，必要时重启 Pi。`);
   }
   const store = new TraceStore();
   const activity = new ActivityState();
-  if (typeof store.remove !== 'function') throw new Error('pitools 核心模块不完整，请替换完整目录后重载。');
+  if (typeof store.remove !== 'function' || typeof store.touch !== 'function') throw new Error('pitools 核心模块不完整，请替换完整目录后重载。');
   let enabled = true;
   let selected = -1;
   let selectedRecord: any;
@@ -38,7 +38,7 @@ export default function pitools(pi: ExtensionAPI) {
     if (!validModelTiming(timing)) { pendingModelTimings.delete(message); return; }
     pi.appendEntry('pitools-model-timing', { schema: 1, messageEntryId, ...timing });
     pendingModelTimings.delete(message);
-    for (const r of store.records) if (r.kind === 'model' && r.modelMessage === message) { r.messageEntryId = messageEntryId; delete r.modelMessage; }
+    for (const r of store.records) if (r.kind === 'model' && r.modelMessage === message) { r.messageEntryId = messageEntryId; delete r.modelMessage; store.touch(r); }
   }
   let requestStart: number | undefined;
   let firstToken: number | undefined;
@@ -174,6 +174,7 @@ export default function pitools(pi: ExtensionAPI) {
       let plain = false;
       let pageSize = 10;
       let total = 0;
+      const detailCache = new DetailCache();
       let searchMode = false;
       let focused = false;
       let filter = '';
@@ -186,14 +187,14 @@ export default function pitools(pi: ExtensionAPI) {
         selectedRecord = store.records[selected];
         offset = 0; refresh();
       };
-      const finish = () => done();
+      const finish = () => { detailCache.clear(); done(); };
       closeInspector = finish;
       inspectorRepaint = () => tui.requestRender();
       return {
         get focused() { return focused; },
         set focused(value: boolean) { focused = value; search.focused = value && searchMode; },
-        invalidate() { search.invalidate(); },
-        dispose() { closeInspector = undefined; inspectorRepaint = undefined; },
+        invalidate() { search.invalidate(); detailCache.clear(); },
+        dispose() { detailCache.clear(); closeInspector = undefined; inspectorRepaint = undefined; },
         handleInput(data: string) {
           if (searchMode) {
             if (matchesKey(data, 'escape') || matchesKey(data, 'return')) { searchMode = false; search.focused = false; }
@@ -224,25 +225,33 @@ export default function pitools(pi: ExtensionAPI) {
           if (!r) return [clip('轨迹已清空，Esc 返回')];
           const labels = r.kind === 'tool' ? ['概述', '参数', '结果', 'Schema', '计时'] : ['概述', '预览', '原始内容', '计时'];
           const activeTab = tab % labels.length;
-          const schema = r.kind === 'tool' ? r.schema ?? toolSchema(r.name) : undefined;
-          const timing = timingInfo(r);
-          const displayText = r.name === '思考' && r.live && !safeText(r.text).trim() ? '思考中…' : safeText(r.text);
-          const thinkingNote = r.hiddenThinkingBlocks ? `\n未提供可见思考：该助手消息有 ${r.hiddenThinkingBlocks} 个空思考块，已收起；不表示推理 Token 为零。\n` : '';
-          const overview = `类型：${r.kind === 'tool' ? '工具' : r.kind === 'input' ? '输入' : '助手'}\n第 ${r.turn} 轮 · 第 ${selected + 1} 步\n状态：${status(r)}\n${r.id ? `调用 ID：${safeText(r.id)}\n` : ''}${thinkingNote}`;
-          const body = r.kind === 'tool'
-            ? activeTab === 1 ? json(r.args) : activeTab === 2 ? json(r.result ?? '(尚无结果；历史嵌套调用可能未保存结果)')
-              : activeTab === 3 ? `Schema 来源：${r.schema ? '执行开始时的工具定义' : '当前工具定义，可能与历史不同'}\n${schema ? json(schema) : '当前 Pi 未提供该工具的 Schema。'}`
-                : activeTab === 4 ? json(timing) : `${overview}\n参数\n${json(r.args)}\n\n结果\n${json(r.result ?? '(未记录)')}\n\n计时\n${json(timing)}`
-            : activeTab === 1 ? displayText : activeTab === 2 ? json(r.raw ?? { text: r.text, usage: r.usage }) : activeTab === 3 ? json(timing)
-              : r.kind === 'input' ? `${overview}\n提交时间\n${json(timing)}\n\n内容\n${displayText}`
-                : `${overview}\nToken（该助手消息整体用量，思考/回复共用，不应重复相加）\n${json(r.usage)}\n\n${r.name === '思考' ? '思考' : '内容'}\n${displayText}\n\n计时（助手消息整体，不是单个思考块时长）\n${json(timing)}`;
           const rows = matches();
           const split = w >= 100;
           const listWidth = split ? Math.floor(w * 0.54) : w;
           const detailWidth = split ? w - listWidth - 3 : w;
           const height = Math.max(4, Math.min(28, terminalRows - 10));
           pageSize = split ? height - 2 : Math.max(1, height - 7);
-          const lines = renderDetail(body, r, activeTab, Math.max(1, detailWidth), theme, plain);
+          const buildLines = () => {
+            const schema = r.kind === 'tool' ? r.schema ?? toolSchema(r.name) : undefined;
+            const timing = timingInfo(r);
+            const displayText = r.name === '思考' && r.live && !safeText(r.text).trim() ? '思考中…' : safeText(r.text);
+            const thinkingNote = r.hiddenThinkingBlocks ? `\n未提供可见思考：该助手消息有 ${r.hiddenThinkingBlocks} 个空思考块，已收起；不表示推理 Token 为零。\n` : '';
+            const overview = `类型：${r.kind === 'tool' ? '工具' : r.kind === 'input' ? '输入' : '助手'}\n第 ${r.turn} 轮 · 第 ${selected + 1} 步\n状态：${status(r)}\n${r.id ? `调用 ID：${safeText(r.id)}\n` : ''}${thinkingNote}`;
+            const body = r.kind === 'tool'
+              ? activeTab === 1 ? json(r.args) : activeTab === 2 ? json(r.result ?? (plain ? '(尚无结果；历史嵌套调用可能未保存结果)' : '(尚无结果)'))
+                : activeTab === 3 ? `Schema 来源：${r.schema ? '执行开始时的工具定义' : '当前工具定义，可能与历史不同'}\n${schema ? json(schema) : '当前 Pi 未提供该工具的 Schema。'}`
+                  : activeTab === 4 ? json(timing) : `${overview}\n参数\n${json(r.args)}\n\n结果\n${json(r.result ?? '(未记录)')}\n\n计时\n${json(timing)}`
+              : activeTab === 1 ? displayText : activeTab === 2 ? json(r.raw ?? { text: r.text, usage: r.usage }) : activeTab === 3 ? json(timing)
+                : r.kind === 'input' ? `${overview}\n提交时间\n${json(timing)}\n\n内容\n${displayText}`
+                  : `${overview}\nToken（该助手消息整体用量，思考/回复共用，不应重复相加）\n${json(r.usage)}\n\n${r.name === '思考' ? '思考' : '内容'}\n${displayText}\n\n计时（助手消息整体，不是单个思考块时长）\n${json(timing)}`;
+            return renderDetail(body, r, activeTab, Math.max(1, detailWidth), theme, plain);
+          };
+          // Only content tabs: overview/timing/schema remain dynamic. Revision
+          // catches in-place event updates; invalidate/dispose drop themed lines.
+          const cacheable = activeTab === 1 || activeTab === 2;
+          const lines = cacheable
+            ? detailCache.render([r, r.revision, activeTab, detailWidth, plain, detailThemeKey(theme)], buildLines)
+            : (detailCache.clear(), buildLines());
           total = lines.length;
           offset = Math.min(offset, Math.max(0, total - pageSize));
           const center = rows.findIndex(({ i }: any) => i === selected);
@@ -358,6 +367,7 @@ export default function pitools(pi: ExtensionAPI) {
       }
       record.text = contentText([block]); record.raw = block;
       record.firstTokenMs = firstToken === undefined || requestStart === undefined ? undefined : Math.max(0, firstToken - requestStart);
+      store.touch(record);
     }
     refresh(false);
   });
@@ -373,7 +383,7 @@ export default function pitools(pi: ExtensionAPI) {
       const p = blocks[i];
       if (p?.type === 'toolCall' && hidden && typeof p.id === 'string') {
         const tool = store.calls.get(p.id);
-        if (tool) tool.hiddenThinkingBlocks = hidden;
+        if (tool) { tool.hiddenThinkingBlocks = hidden; store.touch(tool); }
         else missingThinkingByCall.set(p.id, hidden);
       }
       if (emptyThinking(p)) {
@@ -387,10 +397,11 @@ export default function pitools(pi: ExtensionAPI) {
       r.text = contentText([p]); r.raw = p; r.live = false; r.usage = e.message.usage; r.end = endedAt; r.hiddenThinkingBlocks = hidden; r.modelMessage = e.message; r.messageAt = validTimestamp(e.message.timestamp); r.error = e.message.stopReason === 'error'; r.aborted = e.message.stopReason === 'aborted';
       r.elapsed = requestStart === undefined ? undefined : Math.max(0, r.end - requestStart);
       r.firstTokenMs = firstToken === undefined || requestStart === undefined ? undefined : Math.max(0, firstToken - requestStart);
+      store.touch(r);
     }
     for (const r of streaming.values()) {
       if (r.name === '思考' && !safeText(r.text).trim()) { store.remove(r); store.hiddenThinking++; }
-      else r.live = false;
+      else { r.live = false; store.touch(r); }
     }
     streaming.clear(); requestStart = undefined; firstToken = undefined;
     refresh();
@@ -408,7 +419,7 @@ export default function pitools(pi: ExtensionAPI) {
     missingThinkingByCall.delete(e.toolCallId);
     refresh();
   });
-  pi.on('tool_execution_update', e => { const r = store.calls.get(e.toolCallId); if (r) r.result = e.partialResult; refresh(false); });
+  pi.on('tool_execution_update', e => { const r = store.calls.get(e.toolCallId); if (r) { r.result = e.partialResult; store.touch(r); } refresh(false); });
   pi.on('tool_execution_end', e => {
     activity.toolEnd(e.toolCallId, e.isError, Date.now());
     const r = store.end(e.toolCallId, e.toolName, e.result, e.isError);
@@ -431,7 +442,7 @@ export default function pitools(pi: ExtensionAPI) {
     }
     for (const r of [...store.records]) if (r.kind === 'model') {
       if (r.live && r.name === '思考' && !safeText(r.text).trim()) { store.remove(r); store.hiddenThinking++; }
-      else { if (r.live) r.incomplete = true; r.live = false; delete r.modelMessage; }
+      else { if (r.live) r.incomplete = true; r.live = false; delete r.modelMessage; store.touch(r); }
     }
     streaming.clear(); missingThinkingByCall.clear(); requestStart = undefined; firstToken = undefined; refresh();
   });

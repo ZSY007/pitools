@@ -1,9 +1,19 @@
 import type { Theme } from '@earendil-works/pi-coding-agent';
 import { getLanguageFromPath, getMarkdownTheme, highlightCode } from '@earendil-works/pi-coding-agent';
 import { Markdown, truncateToWidth, wrapTextWithAnsi } from '@earendil-works/pi-tui';
-import { contentText, json, safeText } from './core.ts';
+import { contentText, safeText } from './core.ts';
 
-export const RENDERER_VERSION = '0.1.9';
+export const RENDERER_VERSION = '0.1.10';
+
+// Fingerprint actual ANSI output, not Theme identity: Pi supplies a stable proxy
+// whose palette may change. Markdown callbacks also follow the global theme.
+const DETAIL_COLORS = ['mdCodeBlockBorder', 'syntaxComment', 'syntaxKeyword', 'syntaxFunction', 'syntaxVariable', 'syntaxString', 'syntaxNumber', 'syntaxType', 'syntaxOperator', 'syntaxPunctuation'] as const;
+const MARKDOWN_STYLES = ['heading', 'link', 'linkUrl', 'code', 'codeBlock', 'codeBlockBorder', 'quote', 'quoteBorder', 'hr', 'listBullet', 'bold', 'italic', 'underline', 'strikethrough'] as const;
+export function detailThemeKey(theme: Theme): string {
+  const markdown = getMarkdownTheme();
+  return DETAIL_COLORS.map(token => theme.fg(token, 'x')).join('')
+    + MARKDOWN_STYLES.map(token => markdown[token]('x')).join('');
+}
 
 /** Render text only: never execute code, open files, or fetch attachments. */
 export function renderDetail(body: string, record: any, tab: number, width: number, theme: Theme, plain: boolean): string[] {
@@ -54,7 +64,7 @@ export function renderDetail(body: string, record: any, tab: number, width: numb
       else lines.push(...text(output));
       lines.push('');
     }
-    return [...lines, ...heading('── 完整结果 · JSON ──'), ...code(json(record.result ?? '(尚无结果)'), 'json')];
+    return [...lines, ...heading('── 完整结果 · JSON ──'), ...code(body, 'json')];
   }
   return tab === 3 ? code(body, 'json') : text(body);
 }
