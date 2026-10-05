@@ -1,0 +1,19 @@
+# Runtime/user data must never be published.
+node_modules/
+.pi/
+.env
+.env.*
+auth.json
+models.json
+*.log
+*.jsonl
+*.sqlite
+*.sqlite-*
+*.zip
+*.tgz
+*.pem
+*.key
+.DS_Store
+# Keep machine-specific repair/audit notes locally, not in the public repository.
+/docs/*
+!/docs/installation.md

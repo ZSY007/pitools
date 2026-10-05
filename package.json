@@ -1,0 +1,19 @@
+{
+  "name": "pitools",
+  "version": "0.1.9",
+  "private": true,
+  "type": "module",
+  "description": "Terminal-native Pi trajectory and tool-call inspector",
+  "license": "BSD-3-Clause",
+  "repository": { "type": "git", "url": "https://github.com/ZSY007/pitools.git" },
+  "homepage": "https://github.com/ZSY007/pitools",
+  "bugs": { "url": "https://github.com/ZSY007/pitools/issues" },
+  "keywords": ["pi-package"],
+  "pi": { "extensions": ["./index.ts"] },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "scripts": { "test": "node --test tests/*.test.mjs" },
+  "engines": { "node": ">=22.19" }
+}
