@@ -4,7 +4,7 @@
 
 **Pi 终端里的轨迹、工具调用详情和工作状态。** Windows / macOS，终端原生，不打开浏览器。
 
-**0.1.12 三包发布准备中；已发布旧版为 0.1.11。**独立实现，界面参考 DeepSeek Harness 的 Trajectory。
+当前版本 **0.1.12**，提供 TS / Python / Rust 三个独立安装包。独立实现，界面参考 DeepSeek Harness 的 Trajectory。
 
 ## 安装与更新
 
@@ -22,7 +22,7 @@ pi install git:github.com/ZSY007/pitools-ts
 - Python：安装后在交互会话自动使用 Python 活动核心；需要 Python 3.11+，不自动安装解释器。
 - Rust：附带经过平台构建/测试的 executable，自动选择匹配平台；无需 Cargo/Python，不让普通用户编译。
 
-三个包的界面代码完全相同，不是三份备份。当前仓库维护共享源码与构建流水线；三个成品仓库/归档通过 CI 后发布，不能把下面的安装地址当作已完成发布的回执。旧 `git:github.com/ZSY007/pitools` 先移除声明，再安装目标版；完整迁移见 [三包指南](docs/editions.md)。
+三个包的界面代码完全相同，不是三份备份。当前仓库维护共享源码与构建流水线，成品在三个独立仓库/Release 中分发。旧 `git:github.com/ZSY007/pitools` 先移除声明，再安装目标版；完整迁移见 [三包指南](docs/editions.md)。
 
 之后只更新选中的包，例如 TS：
 
@@ -174,7 +174,7 @@ npm test
 python -m unittest discover -s python/tests
 ```
 
-CI 配置在 Windows / macOS / Linux 上使用 Node 24.12.0、Python 3.11 / 3.13 和显式构建的 Rust worker 运行纯数据/协议测试，不访问真实模型或用户会话；执行状态见顶部 Actions badge；CI 不等于用户实际终端/compositor 长测。
+首轮三包 CI 八项全绿：Windows x64、macOS arm64/x64、Linux x64 的真 worker、模块化/bundled Pi loader 与四 target 汇集均通过。配置使用 Node 24.12.0、Python 3.11/3.13，不访问真实模型或用户会话；执行状态见顶部 Actions badge。Linux 最低 glibc 写在成品 README/build-info 中，不承诺未验证发行版。CI 不等于用户实际终端/compositor 长测。
 
 实际宿主回归需设置 `PI_HOST_ROOT` 为已安装的 `@earendil-works/pi-coding-agent` 包目录：
 

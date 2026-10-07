@@ -1,6 +1,6 @@
 # TS / Python / Rust：三个独立成品包
 
-0.1.12 三包正在构建/验收；本文为分发契约，完成发布以 release 和 CI 回执为准。不是把开发备份发给用户。
+0.1.12 分发 TS / Python / Rust 三个独立成品包，完成发布以各自 release 回执为准。不是把开发备份发给用户。
 
 | 产品 | 默认活动核心 | 用户要求 | 内容 |
 |---|---|---|---|
@@ -45,14 +45,14 @@ Release 提供三个具名 `.tgz` 成品包及 `SHA256SUMS`。下载一个并校
 
 ## Rust 平台与二进制边界
 
-计划成品包必须同时包含以下经过各自平台 CI 构建/测试的 targets；少一个则装配失败，不用占位 exe 或跨平台伪装：
+成品包必须同时包含以下经过各自平台 CI 构建/测试的 targets；少一个则装配失败，不用占位 exe 或跨平台伪装：
 
 - `x86_64-pc-windows-msvc`
 - `aarch64-apple-darwin`
 - `x86_64-apple-darwin`
 - `x86_64-unknown-linux-gnu`
 
-其他架构/musl 暂不列为已分发支持；找不到匹配 binary 则明确回退 TS。binary 根据实际进程架构选择，macOS x64/arm64 分开，不伪称 universal Mach-O。当前 Mark 表要求 Node Unicode 16.0（CI 使用 Node 24.12.0）；不同 Unicode 不默默改变 JS 字符串/列宽语义。Linux binary 的发行版 libc 兼容性还须单独说明，不能仅凭 Linux runner 成功承诺所有 Linux 发行版。
+其他架构/musl 暂不列为已分发支持；找不到匹配 binary 则明确回退 TS。binary 根据实际进程架构选择，macOS x64/arm64 分开，不伪称 universal Mach-O。当前 Mark 表要求 Node Unicode 16.0（CI 使用 Node 24.12.0）；不同 Unicode 不默默改变 JS 字符串/列宽语义。Linux 最低 glibc 从实际 ELF 的版本符号提取，写入 binary 的 `build-info.json` 和成品 README；不承诺所有 Linux 发行版。
 
 插件不运行时下载、编译、安装 Cargo/解释器、联网监听或自动重启。Rust binary 不读凭证/会话；worker 同用户权限，不是沙箱。版本、Unicode、协议/帧、预算或超时错误保持完整 TS 状态并提示一次。
 

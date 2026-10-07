@@ -30,6 +30,13 @@ licenses.append((stdlib,Path('licenses/rust-standard-library/COPYRIGHT-library.h
 out.mkdir(parents=True);shutil.copy2(binary,out/name)
 for source,rel in licenses:
  dst=out/rel;dst.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,dst)
-info={'version':version,'target':target,'sourceCommit':commit,'sourceDirty':dirty,'rustc':compiler.splitlines()[0],'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'binaryBytes':binary.stat().st_size,'nodeUnicode':'16.0','licenses':{rel.as_posix():hashlib.sha256(src.read_bytes()).hexdigest()for src,rel in licenses}}
+requirements={}
+if target=='x86_64-unknown-linux-gnu':
+ import re
+ symbols=subprocess.check_output(['readelf','--version-info',str(binary)],text=True)
+ versions={tuple(map(int,m.split('.')))for m in re.findall(r'GLIBC_([0-9]+(?:\.[0-9]+)+)',symbols)}
+ if not versions:raise SystemExit('Cannot establish linked GNU libc requirement.')
+ requirements['glibcMin']='.'.join(map(str,max(versions)))
+info={'platformRequirements':requirements,'version':version,'target':target,'sourceCommit':commit,'sourceDirty':dirty,'rustc':compiler.splitlines()[0],'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'binaryBytes':binary.stat().st_size,'nodeUnicode':'16.0','licenses':{rel.as_posix():hashlib.sha256(src.read_bytes()).hexdigest()for src,rel in licenses}}
 (out/'build-info.json').write_text(json.dumps(info,indent=2)+'\n',encoding='utf8')
 print(json.dumps({'artifact':str(out),'target':target,'version':version,'dirtyLocalTest':dirty}))

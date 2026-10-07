@@ -1,6 +1,10 @@
 # 安装、更新与迁移
 
-## Git 包（推荐）
+## 0.1.12 三个独立产品（推荐）
+
+见 [TS / Python / Rust 三包指南](editions.md)：三选一，界面完全相同，Rust 附带匹配平台 executable，无需用户编译。新安装推荐 `pi install git:github.com/ZSY007/pitools-ts`；Python/Rust 换相应仓库名。旧包必须先移除声明再迁移，只针对所选产品更新，不升级 Pi。
+
+## 0.1.11 及以前的 Git 包（历史来源）
 
 ```sh
 pi install git:github.com/ZSY007/pitools
