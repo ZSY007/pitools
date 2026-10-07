@@ -120,7 +120,7 @@ for (const [name, body, phase, expected] of [
   ['exit before ready', 'sys.exit(1)', 'start', 'exited_before_ready'],
   ['crash after ready', `${READY}sys.stdin.readline(); sys.exit(1)`, 'run', 'exited'],
   ['bad JSON after ready', `${READY}sys.stdin.readline(); print("not json", flush=True); sys.stdin.readline()`, 'run', 'bad_json'],
-  ['oversized UTF-8 frame', `${READY}sys.stdin.readline(); sys.stdout.write(json.dumps({'protocol':1,'type':'extra','text':'界'*400000},ensure_ascii=False)+'\\n'); sys.stdout.flush(); sys.stdin.readline()`, 'run', 'frame_too_large'],
+  ['oversized UTF-8 frame', `${READY}sys.stdin.readline(); sys.stdout.buffer.write((json.dumps({'protocol':1,'type':'extra','text':'界'*400000},ensure_ascii=False)+'\\n').encode('utf-8')); sys.stdout.buffer.flush(); sys.stdin.readline()`, 'run', 'frame_too_large'],
   ['oversized delimited frame', `${READY}sys.stdin.readline(); sys.stdout.write('x'*1100000+'\\n'); sys.stdout.flush(); sys.stdin.readline()`, 'run', 'frame_too_large'],
   ['unsolicited view id', `${READY}sys.stdin.readline(); print(json.dumps({"protocol":1,"type":"view","epoch":1,"id":999,"line":"x","phase":"idle","failure":False,"live":False,"nextWakeAt":None}), flush=True); sys.stdin.readline()`, 'run', 'bad_view'],
   ['request timeout', `${READY}import time\nwhile sys.stdin.readline(): pass`, 'run', 'request_timeout'],
