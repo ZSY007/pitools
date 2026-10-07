@@ -24,5 +24,12 @@ models.json
 !/docs/0.1.11-python-activity-core.md
 !/docs/0.1.11-performance-comparison.md
 !/docs/rust-feasibility.md
+!/docs/0.1.12-rust-activity-core.md
+!/docs/0.1.12-rust-optimization-measurement.md
+!/docs/editions.md
 __pycache__/
 *.pyc
+# Native build outputs are local; never auto-built/downloaded at runtime.
+**/target/
+/dist/
+/native/

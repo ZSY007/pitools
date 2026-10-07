@@ -7,20 +7,95 @@ permissions:
 jobs:
   unit:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ['3.11', '3.13']
+        include:
+          - {os: ubuntu-latest, python: '3.11', artifact: false}
+          - {os: ubuntu-latest, python: '3.13', artifact: true}
+          - {os: windows-latest, python: '3.11', artifact: false}
+          - {os: windows-latest, python: '3.13', artifact: true}
+          - {os: macos-latest, python: '3.11', artifact: false}
+          - {os: macos-latest, python: '3.13', artifact: true}
+          - {os: macos-15-intel, python: '3.13', artifact: true}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '24.12.0'
       - uses: actions/setup-python@v5
         id: py
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m unittest discover -s python/tests
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          components: rust-docs
+      - run: node scripts/gen-rust-assets.mjs --check
+      - run: cargo test --release --locked --manifest-path rust/pitools-core/Cargo.toml
+      - run: cargo build --release --locked --manifest-path rust/pitools-core/Cargo.toml
+      - name: Select explicitly built native worker for tests
+        shell: bash
+        run: |
+          suffix=""
+          if [ "$RUNNER_OS" = "Windows" ]; then suffix=".exe"; fi
+          echo "PITOOLS_RUST_CORE=$GITHUB_WORKSPACE/rust/pitools-core/target/release/pitools-core$suffix" >> "$GITHUB_ENV"
+      - run: python -B -m unittest discover -s python/tests
       - run: npm test
         env:
           PITOOLS_PYTHON: ${{ steps.py.outputs.python-path }}
+      - name: Export native worker and complete upstream licenses
+        if: matrix.artifact
+        run: python -B scripts/export-rust-native.py --out native
+      - name: Build platform-local edition packages for acceptance
+        if: matrix.artifact
+        shell: bash
+        run: |
+          target=$(rustc -vV | awk '/^host:/ {print $2}')
+          node scripts/package-editions.mjs --out "$GITHUB_WORKSPACE/dist/local" --native "$GITHUB_WORKSPACE/native" --require-targets "$target"
+      - name: Install isolated, pinned Pi test host (not the user's installation)
+        if: matrix.artifact
+        run: npm install --prefix host-test --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.0.4
+      - name: Check actual loader, default backend, mutual exclusion and shutdown
+        if: matrix.artifact
+        shell: bash
+        run: |
+          unset PITOOLS_RUST_CORE
+          export PI_HOST_ROOT="$GITHUB_WORKSPACE/host-test/node_modules/@earendil-works/pi-coding-agent"
+          export PITOOLS_PYTHON="${{ steps.py.outputs.python-path }}"
+          node scripts/verify-editions.mjs "$GITHUB_WORKSPACE/dist/local"
+          PI_BUNDLED_LOADER=1 node scripts/verify-editions.mjs "$GITHUB_WORKSPACE/dist/local"
+      - uses: actions/upload-artifact@v4
+        if: matrix.artifact
+        with:
+          name: native-${{ runner.os }}-${{ runner.arch }}
+          path: native/
+          if-no-files-found: error
+  packages:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.12.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: native
+          merge-multiple: true
+      - name: Assemble all three products; require all four verified native targets
+        run: node scripts/package-editions.mjs --out "$GITHUB_WORKSPACE/dist/packages" --native "$GITHUB_WORKSPACE/native"
+      - run: python -B scripts/archive-editions.py --packages dist/packages --out dist/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pitools-three-editions
+          path: dist/packages/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pitools-release-archives
+          path: dist/release/
+          if-no-files-found: error

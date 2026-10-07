@@ -45,7 +45,19 @@ async function verify(themeName, mode) {
     assert.deepEqual(component.render(0), []);
   }
   try {
-    await emit('session_start'); widths(widget);
+    await emit('session_start');
+    if (process.env.PITOOLS_PACKAGE_EDITION && process.env.PITOOLS_PACKAGE_EDITION !== 'ts') {
+      const until = Date.now() + 10000;
+      let ready = false;
+      while (!ready && Date.now() < until) {
+        await command('core status'); const status = notifications.at(-1)?.text ?? '';
+        ready = status.includes('worker pid') || status.includes('最近故障');
+        if (!ready) await new Promise(r => setTimeout(r, 10));
+      }
+      assert.ok(ready, 'edition default core must settle before generic UI regression');
+      await command('core ts'); notifications.length = 0;
+    }
+    widths(widget);
     const freshHeader = strip(widget.render(160)[0]);
     assert.ok(freshHeader.startsWith('● 🌑 ⏵ 待机中'), 'fresh Pi sessions must show the idle activity');
     assert.ok(!freshHeader.includes('总0s'), 'do not fabricate task timing before any task');
@@ -400,11 +412,12 @@ async function verify(themeName, mode) {
 }
 for (const themeName of ['dark', 'light']) for (const mode of ['truecolor', '256color']) await verify(themeName, mode);
 await verify('system', 'terminal-default');
-// 0.1.11 optional Python activity core through the real loader and handlers.
-// Skips (with a notice) when no interpreter is available; PITOOLS_PYTHON may pin one.
-async function verifyPython() {
-  const { resolvePython } = await import(pathToFileURL(path.join(path.dirname(entry), 'python-core.ts')));
-  if (!resolvePython()) { console.log('SKIP: Python core host check; no Python 3 interpreter (set PITOOLS_PYTHON).'); return; }
+// Optional external activity cores through the actual loader and handlers.
+async function verifyWorker(kind) {
+  const adapters = await import(pathToFileURL(path.join(path.dirname(entry), 'python-core.ts')));
+  const name = kind === 'rust' ? 'Rust' : 'Python';
+  const envKey = kind === 'rust' ? 'PITOOLS_RUST_CORE' : 'PITOOLS_PYTHON';
+  if (!(kind === 'rust' ? adapters.resolveRust() : adapters.resolvePython())) { console.log(`SKIP: ${name} core host check; set ${envKey}.`); return; }
   const theme = getThemeByName('dark'); setThemeInstance(theme);
   const until = async (check, label, timeout = 8000) => {
     const started = Date.now();
@@ -433,53 +446,56 @@ async function verifyPython() {
   const a = await instance();
   await a.emit('session_start');
   assert.ok((await a.status()).includes('实际 TS'), 'TS core is the default');
-  await a.command('core python'); await a.command('core verify on');
-  assert.ok(a.notifications.some(n => n.text.includes('已切换到 Python 活动核心')), JSON.stringify(a.notifications));
+  await a.command(`core ${kind}`); await a.command('core verify on');
+  assert.ok(a.notifications.some(n => n.text.includes(`已切换到 ${name} 活动核心`)), JSON.stringify(a.notifications));
   const pid = Number(/worker pid (\d+)/.exec(await a.status())[1]);
   assert.ok(pid > 0);
   await a.emit('agent_start');
-  await a.emit('message_start', { message: { role: 'user', content: 'Python 核心' } });
-  const message = { role: 'assistant', content: [{ type: 'text', text: '⏵ 验证 Python 核心\n正文' }], usage: { output: 1500 } };
+  await a.emit('message_start', { message: { role: 'user', content: `${name} 核心` } });
+  const message = { role: 'assistant', content: [{ type: 'text', text: `⏵ 验证 ${name} 核心\n正文` }], usage: { output: 1500 } };
   await a.emit('message_start', { message });
-  await a.emit('message_update', { message, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: '⏵ 验证 Python 核心' } });
-  await until(() => a.header().includes('⏵ 验证 Python 核心'), 'narration from Python view');
+  await a.emit('message_update', { message, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: `⏵ 验证 ${name} 核心` } });
+  await until(() => a.header().includes(`⏵ 验证 ${name} 核心`), `narration from ${name} view`);
   await a.emit('message_end', { message });
   await a.emit('tool_execution_start', { toolCallId: 'p1', toolName: 'bash', args: { command: 'npm test' } });
   await a.emit('tool_execution_start', { toolCallId: 'p2', toolName: 'read', args: { path: '/tmp/中文' } });
-  await until(() => a.header().includes('2 并行'), 'parallel tools from Python view');
+  await until(() => a.header().includes('2 并行'), `parallel tools from ${name} view`);
   for (const w of [1, 8, 20, 80, 160]) for (const line of a.widget.render(w)) assert.ok(visibleWidth(line) <= w);
   await a.emit('tool_execution_end', { toolCallId: 'p2', toolName: 'read', result: { content: [] }, isError: true });
   await a.emit('tool_execution_end', { toolCallId: 'p1', toolName: 'bash', result: { content: [] }, isError: false });
   await a.emit('agent_end', { messages: [message] });
-  await until(() => a.header().includes('1.5k tokens'), 'done summary from Python view');
-  assert.ok(a.widget.render(160)[0].startsWith(theme.fg('success', '●')), 'done dot follows the Python view');
+  await until(() => a.header().includes('1.5k tokens'), `done summary from ${name} view`);
+  assert.ok(a.widget.render(160)[0].startsWith(theme.fg('success', '●')), 'done dot follows the worker view');
   const status = await a.status();
   assert.ok(/TS 对照一致 \d+ \/ 不一致 0/.test(status), status);
   a.notifications.length = 0; await a.command('version');
-  assert.ok(a.notifications[0].text.includes('活动核心 Python') && a.notifications[0].text.includes('Python 适配 0.1.11'));
+  assert.ok(a.notifications[0].text.includes(`活动核心 ${name}`) && a.notifications[0].text.includes(`${name} 适配 0.1.12`));
   await a.command('core ts');
   await until(() => { try { process.kill(pid, 0); return false; } catch { return true; } }, '/pitools core ts stops the worker');
   assert.ok((await a.status()).includes('实际 TS'));
-  // PITOOLS_CORE=python starts once at session_start; shutdown leaves no process behind.
-  const b = await instance({ PITOOLS_CORE: 'python' });
+  // Environment opt-in starts once; shutdown leaves no process behind.
+  const b = await instance({ PITOOLS_CORE: kind });
   await b.emit('session_start');
-  await until(() => b.header().includes('待机中') && b.notifications.length === 0, 'env-selected Python idle view');
+  await until(() => b.header().includes('待机中') && b.notifications.length === 0, `env-selected ${name} idle view`);
   let match;
   for (let i = 0; i < 800 && !match; i++) { match = /worker pid (\d+)/.exec(await b.status()); if (!match) await new Promise(r => setTimeout(r, 10)); }
   assert.ok(match, 'env-selected worker starts at session_start');
   const pid2 = Number(match[1]);
   await b.emit('session_shutdown'); await b.emit('session_shutdown');
   await until(() => { try { process.kill(pid2, 0); return false; } catch { return true; } }, 'session_shutdown stops the worker');
-  // Missing interpreter: explicit warning, TS keeps rendering, no install attempt.
+  // Missing executable: explicit warning, TS keeps rendering, no install attempt.
   const c = await instance();
   await c.emit('session_start');
-  const savedPython = process.env.PITOOLS_PYTHON;
-  process.env.PITOOLS_PYTHON = path.join(os.tmpdir(), 'pitools-missing-python');
-  try { await c.command('core python'); }
-  finally { if (savedPython === undefined) delete process.env.PITOOLS_PYTHON; else process.env.PITOOLS_PYTHON = savedPython; }
-  assert.ok(c.notifications.some(n => n.level === 'warning' && n.text.includes('未找到 Python')));
+  const savedExecutable = process.env[envKey];
+  process.env[envKey] = path.join(os.tmpdir(), `pitools-missing-${kind}`);
+  try { await c.command(`core ${kind}`); }
+  finally { if (savedExecutable === undefined) delete process.env[envKey]; else process.env[envKey] = savedExecutable; }
+  assert.ok(c.notifications.some(n => n.level === 'warning' && n.text.includes(`未找到 ${name}`)));
   assert.ok(c.header().includes('待机中'));
   await c.emit('session_shutdown'); await a.emit('session_shutdown');
-  console.log(`PASS: ${bundle ? 'bundled' : 'modular'} Python core; opt-in switch, narration/parallel/done views and dot from worker, TS parity counter, version, core ts stop, PITOOLS_CORE start, shutdown kills worker, missing interpreter fallback.`);
+  console.log(`PASS: ${bundle ? 'bundled' : 'modular'} ${name} core; opt-in switch, narration/parallel/done views and dot from worker, TS parity counter, version, core ts stop, PITOOLS_CORE start, shutdown kills worker, missing executable fallback.`);
 }
-await verifyPython();
+if (!process.env.PITOOLS_PACKAGE_EDITION) {
+  await verifyWorker('python');
+  await verifyWorker('rust');
+}

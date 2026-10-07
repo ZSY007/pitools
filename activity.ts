@@ -3,7 +3,7 @@
 // Copyright (c) 2026, chimney (ccch1mneyyy); see data/activity/LICENSE.
 import { safeText, visibleTextTail } from './core.ts';
 import { PHRASES, FRAME_DATA, ACTIVITY_DATA_VERSION } from './data/activity/data.ts';
-export const ACTIVITY_VERSION = '0.1.11';
+export const ACTIVITY_VERSION = '0.1.12';
 export { ACTIVITY_DATA_VERSION };
 export const FRAME_NAMES = Object.keys(FRAME_DATA.presets);
 export const DEFAULT_ACTIVITY = { enabled: true, frames: 'moon8', lang: 'zh', narrate: true, contract: true, phrases: true };
@@ -215,7 +215,7 @@ export class ActivityState {
     } else text = `${narration || this.phrase(now)} · ${this.lang === 'zh' ? '总' : 'total '}${activityDuration(now - this.startedAt)}`;
     return `${frame} ${text}`.trim();
   }
-  /** Plain JSON state for the Python core; message identity is supplied by the host. */
+  /** Plain JSON state for external activity cores; message identity is supplied by the host. */
   snapshot() {
     return { config: { ...this.config }, phase: this.phase, startedAt: this.startedAt, phaseAt: this.phaseAt, thinkingPhases: this.thinkingPhases,
       active: [...this.active.values()].map(tool => ({ ...tool })), completed: this.completed, firstToolAt: this.firstToolAt ?? null,

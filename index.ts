@@ -4,30 +4,39 @@ import { TraceStore, DetailCache, BlockTextCache, visibleTextTail, safeText, jso
 import { renderDetail, detailThemeKey, RENDERER_VERSION } from './rendering.ts';
 
 import { ActivityState, normalizeActivity, restoreActivityConfig, narrationContract, FRAME_NAMES, ACTIVITY_VERSION, ACTIVITY_DATA_VERSION } from './activity.ts';
-import { ActivityCore, PYTHON_CORE_VERSION } from './python-core.ts';
+import { ActivityCore, PYTHON_CORE_VERSION, RUST_CORE_VERSION } from './python-core.ts';
 
-const VERSION = '0.1.11';
+const VERSION = '0.1.12';
 
-export default function pitools(pi: ExtensionAPI) {
+export default function pitools(pi: ExtensionAPI, options: { edition?: 'development' | 'ts' | 'python' | 'rust' } = {}) {
+  const edition = options.edition ?? 'development';
+  if (!['development', 'ts', 'python', 'rust'].includes(edition)) throw new Error('pitools 包类型无效。');
+  // Shared host event bus, not a process-global singleton: Pi invalidates these
+  // subscriptions on reload. Reject a second edition before registering any UI.
+  const claim: { owner?: string } = {};
+  pi.events.emit('pitools:edition-owner', claim);
+  if (claim.owner) throw new Error(`pitools 已加载 ${claim.owner} 版；TS/Python/Rust 三包只选一个，请移除旧包后 /reload。`);
   // Fail once at load time, before any stream handlers/timers are registered,
   // rather than flooding every message with missing-function exceptions.
   const required = { TraceStore, DetailCache, BlockTextCache, visibleTextTail, safeText, json, summary, duration, contentText, emptyThinking, missingThinkingCount, validTimestamp, validModelTiming, timingInfo, renderDetail, detailThemeKey, ActivityState, ActivityCore, normalizeActivity, restoreActivityConfig, narrationContract };
   const missing = Object.entries(required).filter(([, value]) => typeof value !== 'function').map(([name]) => name);
-  if (missing.length || CORE_VERSION !== VERSION || RENDERER_VERSION !== VERSION || ACTIVITY_VERSION !== VERSION || ACTIVITY_DATA_VERSION !== VERSION || PYTHON_CORE_VERSION !== VERSION) {
-    throw new Error(`pitools 模块版本不一致：入口 ${VERSION}，核心 ${CORE_VERSION ?? '未知'}，渲染 ${RENDERER_VERSION ?? '未知'}，活动 ${ACTIVITY_VERSION ?? '未知'}，数据 ${ACTIVITY_DATA_VERSION ?? '未知'}，Python 适配 ${PYTHON_CORE_VERSION ?? '未知'}${missing.length ? `；缺少 ${missing.join(', ')}` : ''}。请替换完整插件目录后 /reload，必要时重启 Pi。`);
+  if (missing.length || CORE_VERSION !== VERSION || RENDERER_VERSION !== VERSION || ACTIVITY_VERSION !== VERSION || ACTIVITY_DATA_VERSION !== VERSION || PYTHON_CORE_VERSION !== VERSION || RUST_CORE_VERSION !== VERSION) {
+    throw new Error(`pitools 模块版本不一致：入口 ${VERSION}，核心 ${CORE_VERSION ?? '未知'}，渲染 ${RENDERER_VERSION ?? '未知'}，活动 ${ACTIVITY_VERSION ?? '未知'}，数据 ${ACTIVITY_DATA_VERSION ?? '未知'}，Python 适配 ${PYTHON_CORE_VERSION ?? '未知'}，Rust 适配 ${RUST_CORE_VERSION ?? '未知'}${missing.length ? `；缺少 ${missing.join(', ')}` : ''}。请替换完整插件目录后 /reload，必要时重启 Pi。`);
   }
   const store = new TraceStore();
   let notifyCtx: ExtensionContext | undefined;
   // TS core is the default and always-running fallback; Python is opt-in (/pitools core python or PITOOLS_CORE=python).
   const activity = new ActivityCore({
-    // Python view replies: wake ticks paint at once (like TS); other changes use the 120ms throttle; unchanged views do not repaint.
+    paintDeadline: () => lastPaint + 120,
+    // External view replies: wake ticks paint at once (like TS); other changes use the 120ms throttle; unchanged views do not repaint.
     onChange: mode => { if (mode === 'now') { if (tuiActive && enabled) paint(); scheduleWake(); } else if (mode === 'soon') refresh(false); else scheduleWake(); },
     onFallback: category => {
-      try { notifyCtx?.ui.notify(`pitools Python 核心已停止（${category}），已回退 TS 核心；不会自动重启。/pitools core python 可重试。`, 'warning'); } catch { /* UI may be closing. */ }
+      try { notifyCtx?.ui.notify(`pitools ${activity.requested === 'rust' ? 'Rust' : 'Python'} 核心已停止（${category}），已回退 TS 核心；不会自动重启。/pitools core ${activity.requested} 可重试。`, 'warning'); } catch { /* UI may be closing. */ }
       refresh();
     },
   });
-  let pythonAtStart = process.env.PITOOLS_CORE === 'python';
+  if (typeof activity.requestPaintView !== 'function' || typeof activity.completePaint !== 'function' || typeof activity.readyForPaint !== 'boolean') throw new Error('pitools 活动适配器不完整，请替换完整目录后重载。');
+  let coreAtStart: 'python' | 'rust' | undefined = edition === 'python' || edition === 'rust' ? edition : edition === 'development' && process.env.PITOOLS_CORE === 'rust' ? 'rust' : edition === 'development' && process.env.PITOOLS_CORE === 'python' ? 'python' : undefined;
   if (typeof store.remove !== 'function' || typeof store.touch !== 'function') throw new Error('pitools 核心模块不完整，请替换完整目录后重载。');
   let enabled = true;
   let selected = -1;
@@ -78,7 +87,14 @@ export default function pitools(pi: ExtensionAPI) {
     catch { return undefined; }
   }
   const isTui = (ctx: ExtensionContext) => ctx.mode === 'tui';
-  const paint = () => { lastPaint = Date.now(); repaint?.(); inspectorRepaint?.(); };
+  const paint = () => {
+    if (paintTimer) clearTimeout(paintTimer); paintTimer = undefined;
+    // The trace is complete locally; wait only for the corresponding activity view,
+    // not another paint interval. A failed worker immediately renders its TS mirror.
+    if (!activity.readyForPaint) { activity.requestPaintView(); return; }
+    activity.completePaint();
+    lastPaint = Date.now(); repaint?.(); inspectorRepaint?.();
+  };
   function scheduleWake() {
     if (timer) clearTimeout(timer); timer = undefined;
     if (!tuiActive || !enabled) return;
@@ -87,10 +103,10 @@ export default function pitools(pi: ExtensionAPI) {
     const traceWake = store.records.some((r: any) => r.live) ? now + 500 : undefined;
     const next = Math.min(wake ?? Infinity, traceWake ?? Infinity);
     if (!Number.isFinite(next)) return; // No idle/done animation clock.
-    // TS paints now; the Python core paints when its fresh view arrives.
+    // TS paints now; external cores paint when their fresh view arrives.
     timer = setTimeout(() => {
       timer = undefined;
-      if (activity.effective === 'python') activity.tick(); else { paint(); scheduleWake(); }
+      if (activity.effective !== 'ts') activity.tick(); else { paint(); scheduleWake(); }
     }, Math.max(1, next - now));
     timer.unref?.();
   }
@@ -104,7 +120,7 @@ export default function pitools(pi: ExtensionAPI) {
     if (immediate || Date.now() - lastPaint >= 120) {
       if (paintTimer) clearTimeout(paintTimer); paintTimer = undefined; paint();
     } else if (!paintTimer) {
-      paintTimer = setTimeout(() => { paintTimer = undefined; if (tuiActive && enabled) paint(); }, 120);
+      paintTimer = setTimeout(() => { paintTimer = undefined; if (tuiActive && enabled) paint(); }, Math.max(1, lastPaint + 120 - Date.now()));
       paintTimer.unref?.();
     }
   };
@@ -178,31 +194,34 @@ export default function pitools(pi: ExtensionAPI) {
     follow = true; selected = store.records.length - 1; selectedRecord = undefined;
     widget(ctx); refresh();
     // A session boundary may start the requested worker once; failures are never auto-restarted.
-    if (pythonAtStart && !activity.python_active && tuiActive) { pythonAtStart = false; void startPython(ctx, false); }
+    if (coreAtStart && activity.effective === 'ts' && tuiActive) { const kind = coreAtStart; coreAtStart = undefined; void startCore(ctx, kind, false); }
   }
-  async function startPython(ctx: ExtensionContext, announce = true) {
-    const failure = await activity.usePython();
+  async function startCore(ctx: ExtensionContext, kind: 'python' | 'rust', announce = true) {
+    const failure = await (kind === 'rust' ? activity.useRust() : activity.usePython());
+    const name = kind === 'rust' ? 'Rust' : 'Python';
     if (failure) ctx.ui.notify(failure === 'python_not_found'
       ? 'pitools 未找到 Python 3.11+ 解释器，继续使用 TS 核心。可设置 PITOOLS_PYTHON 为解释器绝对路径；pitools 不会自动安装 Python。'
-      : `pitools Python 核心启动失败（${failure}），继续使用 TS 核心。`, 'warning');
-    else if (announce) ctx.ui.notify(`pitools 已切换到 Python 活动核心：${activity.status()}`, 'info');
+      : failure === 'rust_not_found' ? 'pitools 未找到 Rust 核心二进制，继续使用 TS 核心。可设置 PITOOLS_RUST_CORE 为可信可执行文件绝对路径；pitools 不会自动下载或编译。'
+      : `pitools ${name} 核心启动失败（${failure}），继续使用 TS 核心。`, 'warning');
+    else if (announce) ctx.ui.notify(`pitools 已切换到 ${name} 活动核心：${activity.status()}`, 'info');
     refresh();
   }
   async function coreCommand(args: string, ctx: ExtensionContext) {
     const choice = args.trim().toLowerCase().replace(/\s+/g, ' ');
     if (!choice || choice === 'status' || choice === 'help') {
-      ctx.ui.notify(`pitools 活动核心：${activity.status()}\n/pitools core python 启用可选 Python worker（Python 3.11+，标准库，私有管道）；/pitools core ts 回到默认 TS 核心；/pitools core verify on|off 开关逐视图 TS 对照（诊断用，会增加 CPU）。轨迹、详情和渲染仍由 TS/Pi 原生实现。`, 'info'); return;
+      ctx.ui.notify(`pitools 活动核心：${activity.status()}\n/pitools core python 启用可选 Python worker（Python 3.11+，标准库，私有管道）；/pitools core rust 启用可选 Rust worker（需要可信二进制，不自动下载/编译）；/pitools core ts 回到默认 TS 核心；/pitools core verify on|off 开关逐视图 TS 对照（诊断用，会增加 CPU）。轨迹、详情和渲染仍由 TS/Pi 原生实现。`, 'info'); return;
     }
     if (choice === 'verify on' || choice === 'verify off') {
       activity.verify = choice === 'verify on';
       ctx.ui.notify(`pitools 逐视图 TS 对照已${activity.verify ? '开启' : '关闭'}。`, 'info'); return;
     }
-    if (choice === 'python') {
-      if (!isTui(ctx)) { ctx.ui.notify('pitools Python 活动核心只在 Pi 交互终端中启动。', 'warning'); return; }
-      notifyCtx = ctx; pythonAtStart = false; return startPython(ctx);
+    if (choice === 'python' || choice === 'rust') {
+      if (edition !== 'development' && choice !== edition) { ctx.ui.notify(`当前是 pitools-${edition} 独立包，不能启动 ${choice} 核心；请先移除当前包，再安装对应版本。`, 'warning'); return; }
+      if (!isTui(ctx)) { ctx.ui.notify('pitools 外部活动核心只在 Pi 交互终端中启动。', 'warning'); return; }
+      notifyCtx = ctx; coreAtStart = undefined; return startCore(ctx, choice);
     }
-    if (choice === 'ts') { pythonAtStart = false; activity.useTs(); ctx.ui.notify('pitools 已使用默认 TS 活动核心，Python worker 已关闭。', 'info'); refresh(); return; }
-    ctx.ui.notify('参数无效，请用 /pitools core status|python|ts|verify on|verify off。', 'warning');
+    if (choice === 'ts') { coreAtStart = undefined; activity.useTs(); ctx.ui.notify('pitools 已使用默认 TS 活动核心，外部 worker 已关闭。', 'info'); refresh(); return; }
+    ctx.ui.notify('参数无效，请用 /pitools core status|python|rust|ts|verify on|verify off。', 'warning');
   }
   async function inspect(ctx: ExtensionContext) {
     if (!isTui(ctx)) { ctx.ui.notify('pitools 详情需要 Pi 交互终端。', 'warning'); return; }
@@ -359,8 +378,8 @@ export default function pitools(pi: ExtensionAPI) {
         case 'live': follow = true; refresh(); break;
         case 'prev': choose(-1); break;
         case 'next': choose(1); break;
-        case 'version': ctx.ui.notify(`pitools ${VERSION} · 核心 ${CORE_VERSION} · 渲染 ${RENDERER_VERSION} · 活动 ${ACTIVITY_VERSION} · 数据 ${ACTIVITY_DATA_VERSION} · Python 适配 ${PYTHON_CORE_VERSION} · 当前进程已加载 TS 模块 · 活动核心 ${activity.effective === 'python' ? 'Python' : 'TS'}`, 'info'); break;
-        case 'help': ctx.ui.notify('pitools：蓝色输入、紫色模型、橙色工具，失败标红。Alt+, / Alt+. 选事件；Alt+T 隐藏/显示；Alt+I 或 /pitools 打开轨迹列表与详情。详情里 ←→ 选事件，Tab 换概述/参数/结果/Schema/计时，↑↓/PgUp/PgDn 滚动，/ 搜索，R 切代码渲染/原文，Esc 关闭。宽终端左右分栏，窄终端上下布局。/pitools live 跟随最新；on/off 开关。首行最左侧显示工作月相/阶段/旁白，文字与统计统一主题强调色，仅 ● 灰/绿/红表示状态；/pitools activity help 管理；/pitools core 查看/切换可选 Python 活动核心。历史未记录的数据不会猜测。/pitools version 检查当前进程加载的版本。', 'info'); break;
+        case 'version': ctx.ui.notify(`pitools ${VERSION} · 包类型 ${edition} · 核心 ${CORE_VERSION} · 渲染 ${RENDERER_VERSION} · 活动 ${ACTIVITY_VERSION} · 数据 ${ACTIVITY_DATA_VERSION} · Python 适配 ${PYTHON_CORE_VERSION} · 当前进程已加载 TS 模块 · Rust 适配 ${RUST_CORE_VERSION} · 活动核心 ${activity.effective === 'rust' ? 'Rust' : activity.effective === 'python' ? 'Python' : 'TS'}`, 'info'); break;
+        case 'help': ctx.ui.notify('pitools：蓝色输入、紫色模型、橙色工具，失败标红。Alt+, / Alt+. 选事件；Alt+T 隐藏/显示；Alt+I 或 /pitools 打开轨迹列表与详情。详情里 ←→ 选事件，Tab 换概述/参数/结果/Schema/计时，↑↓/PgUp/PgDn 滚动，/ 搜索，R 切代码渲染/原文，Esc 关闭。宽终端左右分栏，窄终端上下布局。/pitools live 跟随最新；on/off 开关。首行最左侧显示工作月相/阶段/旁白，文字与统计统一主题强调色，仅 ● 灰/绿/红表示状态；/pitools activity help 管理；/pitools core 查看/切换可选 Python/Rust 活动核心。历史未记录的数据不会猜测。/pitools version 检查当前进程加载的版本。', 'info'); break;
         case '': await inspect(ctx); break;
         default: ctx.ui.notify('未知参数，请用 /pitools help。', 'warning');
       }
@@ -497,9 +516,10 @@ export default function pitools(pi: ExtensionAPI) {
     if (timer) clearTimeout(timer); timer = undefined;
     if (paintTimer) clearTimeout(paintTimer); paintTimer = undefined;
     activity.reset(); activity.dispose(); blockText.clear(); repaint = undefined; inspectorRepaint = undefined; notifyCtx = undefined;
-    if (activity.requested === 'python' && !activity.failure) pythonAtStart = true; // Same instance may receive a new session_start.
+    if (activity.requested !== 'ts' && !activity.failure) coreAtStart = activity.requested; // Same instance may receive a new session_start.
     const close = closeInspector; closeInspector = undefined;
     streaming.clear(); missingThinkingByCall.clear(); pendingModelTimings.clear(); requestStart = undefined; firstToken = undefined;
     close?.();
   });
+  pi.events.on('pitools:edition-owner', (next: { owner?: string }) => { next.owner = edition; });
 }

@@ -4,20 +4,30 @@
 
 **Pi 终端里的轨迹、工具调用详情和工作状态。** Windows / macOS，终端原生，不打开浏览器。
 
-当前版本 **0.1.11**。独立实现，界面参考 DeepSeek Harness 的 Trajectory。
+**0.1.12 三包发布准备中；已发布旧版为 0.1.11。**独立实现，界面参考 DeepSeek Harness 的 Trajectory。
 
 ## 安装与更新
 
-需要 Node >= 22.19、Git，以及兼容的 Pi。已验证 Pi 1.0.0 / 1.0.2。
+需要 Node >= 22.19、Git，以及兼容的 Pi。已验证 Windows Pi 1.0.4；历史版本另在 Pi 1.0.0 / 1.0.2 验证。
+
+0.1.12 分成三个独立产品，**三选一，不要同时安装**：
 
 ```sh
-pi install git:github.com/ZSY007/pitools
+pi install git:github.com/ZSY007/pitools-ts
+# 或：pi install git:github.com/ZSY007/pitools-python
+# 或：pi install git:github.com/ZSY007/pitools-rust
 ```
 
-之后更新 **只有 pitools**：
+- TS：推荐，无 worker、无需 Python/Rust。
+- Python：安装后在交互会话自动使用 Python 活动核心；需要 Python 3.11+，不自动安装解释器。
+- Rust：附带经过平台构建/测试的 executable，自动选择匹配平台；无需 Cargo/Python，不让普通用户编译。
+
+三个包的界面代码完全相同，不是三份备份。当前仓库维护共享源码与构建流水线；三个成品仓库/归档通过 CI 后发布，不能把下面的安装地址当作已完成发布的回执。旧 `git:github.com/ZSY007/pitools` 先移除声明，再安装目标版；完整迁移见 [三包指南](docs/editions.md)。
+
+之后只更新选中的包，例如 TS：
 
 ```sh
-pi update git:github.com/ZSY007/pitools
+pi update git:github.com/ZSY007/pitools-ts
 ```
 
 然后在运行中的 Pi 输入：
@@ -100,9 +110,17 @@ Mac 的 Option 键可能默认输入特殊字符；可以在终端中设置为 M
 - 内存约保留最近 2,000 个事件，运行中调用不淘汰。时间轴按事件顺序排列，不是按秒缩放的图；暂不提供鼠标拖选/缩放或图片灯箱。
 - 外部文字上屏前清洗终端控制字符及双向文字控制符。工具已截断的输出无法恢复；图片只显示元信息。
 
-**插件运行时不联网、不读凭证；默认 TS 核心不启动子进程。** 只有用户主动启用可选 Python 活动核心时，才启动一个私有 Python worker（见下文）。安装/更新的网络操作由 Pi 的包管理 CLI 完成，不在插件内部下载和执行代码。
+**插件运行时不联网、不读凭证；默认 TS 核心不启动子进程。** 只有用户主动启用可选 Python/Rust 独立包（或在共享开发入口手动启用后端）时，才在交互会话启动一个私有 worker（见下文）。安装/更新的网络操作由 Pi 的包管理 CLI 完成，不在插件内部下载和执行代码。
 
 工具参数/结果本身可能包含敏感内容，分享截图或提交 issue 前请检查；没有自动脱敏。仓库不包含真实会话、账号、日志或机器配置。
+
+## 0.1.12 可选 Rust 活动核心
+
+新增 `/pitools core rust`，默认仍是 TS，也保留 Python。**Rust 独立成品包附带匹配平台 binary，无需用户编译。** 插件不会运行时下载或编译；不支持的平台、binary/Unicode 版本不符或故障都会明确提示并回退 TS。开发者仍可用 `PITOOLS_RUST_CORE` 显式指定可信 executable。
+
+已接入紧凑 delta 编码、查询/绘制共享截止时间、单次类型化解析及许可数据静态生成；保留任意 JS UTF-16 码元、完整事件与同步 TS 回退。**Rust 当前仍不是比 TS 更省资源的默认方案。** 两轮前后对照及独立唯一尾部补测分别保留；93% 是重复文本合成场景的桥接字节降幅，不是整体 CPU 降幅。见 [四项优化测量](docs/0.1.12-rust-optimization-measurement.md)。
+
+成品选择与迁移见 [三包指南](docs/editions.md)，范围和兼容边界见 [0.1.12 Rust 活动核心](docs/0.1.12-rust-activity-core.md)。仍使用 0.1.11 的用户应先更新包，再使用 Rust 命令。
 
 ## 0.1.11 可选 Python 活动核心
 
@@ -138,7 +156,9 @@ worker 是同一用户的本地进程，不是权限沙箱。设计与验证边�
 - [Python 核心替换技术思路](docs/python-migration.md)：接口层分工、内部协议、兼容性、安全边界和分阶段实施。
 - [0.1.11 Python 活动核心](docs/0.1.11-python-activity-core.md)：第一阶段落地范围、协议、对照测试与未迁移部分。
 - [0.1.11 性能对照](docs/0.1.11-performance-comparison.md)：双模式实测、批处理/文本热路径优化与测量边界；不宣称 Python 更省资源。
-- [Rust 可行性调研](docs/rust-feasibility.md)：协议探针实测、UTF-16 兼容问题与 worker/Node-API/Wasm 路线；尚未集成 Rust。
+- [Rust 可行性调研](docs/rust-feasibility.md)：集成前的协议探针和字符串问题历史记录，不等于当前实现的性能。
+- [0.1.12 Rust 活动核心](docs/0.1.12-rust-activity-core.md)：显式 opt-in、UTF-16、紧凑协议、调度与故障边界。
+- [0.1.12 四项优化测量](docs/0.1.12-rust-optimization-measurement.md)：独立前后轮次、唯一尾部补测与性能限定。
 
 ## 开发与验证
 
@@ -148,13 +168,13 @@ cd pitools
 npm test
 ```
 
-50 项 Node 单元测试无需 npm install；其中 Python worker 相关测试在找不到解释器时跳过（可用 `PITOOLS_PYTHON` 指定）。Python 侧：
+82 项 Node 测试无需 npm install；Python worker 测试在找不到解释器时跳过（可用 `PITOOLS_PYTHON` 指定），真实 Rust worker 测试需要显式设置 `PITOOLS_RUST_CORE`。Python 侧：
 
 ```sh
 python -m unittest discover -s python/tests
 ```
 
-CI 在 Windows / macOS / Linux 上使用 Node 24 与 Python 3.11 / 3.13 运行这些纯数据测试，不访问真实模型或用户会话。
+CI 配置在 Windows / macOS / Linux 上使用 Node 24.12.0、Python 3.11 / 3.13 和显式构建的 Rust worker 运行纯数据/协议测试，不访问真实模型或用户会话；执行状态见顶部 Actions badge；CI 不等于用户实际终端/compositor 长测。
 
 实际宿主回归需设置 `PI_HOST_ROOT` 为已安装的 `@earendil-works/pi-coding-agent` 包目录：
 
@@ -165,7 +185,7 @@ node scripts/verify-reload.mjs
 
 设置 `PI_BUNDLED_LOADER=1` 可测试 bundled 加载器；`PI_EXTENSION_ENTRY` 可指定安装后的 index.ts。覆盖真实 Theme / Markdown / 高亮 / 主屏与全屏 TUI（底层内存终端）、深浅色与真彩/256 色、窄屏、流式事件、空思考、计时回放、搜索、隐藏、异常隔离及重复关闭。
 
-已在 Windows Node 24.12.0 / Pi 1.0.2 与 Darwin arm64 Node 26.10.0 / Pi 1.0.0 验证。字体和 emoji 的最终视觉效果以实际终端为准。
+0.1.12 已在 Windows Node 24.12.0 / Pi 1.0.4 验证；历史版本在 Windows Pi 1.0.2 与 Darwin arm64 Node 26.10.0 / Pi 1.0.0 验证。尚未完成用户 Mac 的 0.1.12 实际宿主验收。字体和 emoji 的最终视觉效果以实际终端为准。
 
 运行时模块均使用 `.ts`，避免同进程热重载沿用旧 `.mjs` 导出。升级应替换完整包；模块版本不一致时在加载阶段 fail-fast，不注册会反复报错的事件处理器。
 

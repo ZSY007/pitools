@@ -11,7 +11,7 @@ import unicodedata
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-ACTIVITY_VERSION = '0.1.11'
+ACTIVITY_VERSION = '0.1.12'
 _DATA = Path(__file__).resolve().parent.parent.parent / 'data' / 'activity'
 PHRASES = json.loads((_DATA / 'phrases.json').read_text(encoding='utf-8'))
 FRAME_DATA = json.loads((_DATA / 'frames.json').read_text(encoding='utf-8'))

@@ -96,7 +96,7 @@ function fakeWorker(body) {
   return { file, cleanup: () => fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 50 }) }; // Windows may release a killed child's handles late.
 }
 const HELLO = `line = sys.stdin.readline()\n`;
-const READY = `${HELLO}sys.stdout.write(json.dumps({"protocol":1,"type":"ready","version":"0.1.11","python":"fake"})+"\\n"); sys.stdout.flush()\n`;
+const READY = `${HELLO}sys.stdout.write(json.dumps({"protocol":1,"type":"ready","version":"0.1.12","python":"fake"})+"\\n"); sys.stdout.flush()\n`;
 
 test('cancelled startup settles promptly and cannot clear a subsequent startup', needsPython, async () => {
   const fake = fakeWorker('import time\ntime.sleep(60)');
