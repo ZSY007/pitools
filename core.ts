@@ -1,7 +1,10 @@
 // Pure state and display helpers. No filesystem, networking, or process access.
-export const CORE_VERSION = '0.1.10';
+export const CORE_VERSION = '0.1.11';
+const UNSAFE_TEXT = /[\r\t\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069]/;
 export function safeText(value) {
-  return String(value ?? '').replace(/\r\n?/g, '\n').replace(/\t/g, '    ')
+  const text = String(value ?? '');
+  if (!UNSAFE_TEXT.test(text)) return text; // Common clean snapshots: one scan, no replacement pipeline.
+  return text.replace(/\r\n?/g, '\n').replace(/\t/g, '    ')
     .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069]/g, '');
 }
 export function json(value) {
@@ -15,6 +18,44 @@ export function contentText(content) {
     : p?.type === 'thinking' ? safeText(p.thinking)
     : p?.type === 'image' ? `[图片 ${safeText(p.mimeType)}，不在终端展开]` : json(p)).join('\n');
 }
+/** Exactly the last 301 UTF-16 units of visible text blocks joined with LF.
+ * Includes the preceding unit needed to reject a mid-line narration marker.
+ * Never sanitise before slicing: control/Unicode boundaries keep old semantics.
+ */
+export function visibleTextTail(content) {
+  if (!Array.isArray(content)) return '';
+  let result = '', later = false;
+  for (let i = content.length - 1; i >= 0; i--) {
+    const block = content[i];
+    if (block?.type !== 'text') continue;
+    if (later) result = '\n' + result;
+    const remaining = 301 - result.length;
+    if (remaining <= 0) return result;
+    const text = String(block.text ?? '');
+    result = text.slice(-remaining) + result;
+    if (result.length >= 301) return result;
+    later = true;
+  }
+  return result;
+}
+
+/** Cache only primitive text snapshots, not block identity alone. In-place text
+ * edits are detected. Raw blocks/signatures remain untouched and fully available.
+ */
+export class BlockTextCache {
+  constructor() { this.clear(); }
+  clear() { this.entries = new WeakMap(); }
+  get(block) {
+    const source = block.type === 'text' ? block.text : block.thinking;
+    const old = this.entries.get(block);
+    if (typeof source === 'string' && old && old.type === block.type && old.source === source) return old.text;
+    const text = contentText([block]);
+    if (typeof source === 'string') this.entries.set(block, { type: block.type, source, text });
+    else this.entries.delete(block); // Exotic values may mutate without changing identity.
+    return text;
+  }
+}
+
 export function emptyThinking(block) {
   return block?.type === 'thinking' && !safeText(block.thinking).trim();
 }

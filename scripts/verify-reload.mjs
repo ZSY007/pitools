@@ -54,8 +54,9 @@ try {
     const old = await load(entry, cwd);
     assert.deepEqual(old.errors, []); old.runtime.invalidate?.('upgrade');
     const source = fileURLToPath(new URL('..', import.meta.url));
-    for (const file of ['index.ts', 'core.ts', 'rendering.ts', 'activity.ts', 'package.json']) fs.copyFileSync(path.join(source, file), path.join(cwd, file));
+    for (const file of ['index.ts', 'core.ts', 'rendering.ts', 'activity.ts', 'python-core.ts', 'package.json']) fs.copyFileSync(path.join(source, file), path.join(cwd, file));
     fs.cpSync(path.join(source, 'data'), path.join(cwd, 'data'), { recursive: true });
+    fs.cpSync(path.join(source, 'python'), path.join(cwd, 'python'), { recursive: true, filter: file => !file.includes('__pycache__') });
     const themeApi = await import(pathToFileURL(path.join(host, 'dist/modes/interactive/theme/theme.js')));
     const theme = themeApi.getThemeByName('dark'); themeApi.setThemeInstance(theme);
     async function exercise(expectedPlaceholder = '思考中…', rounds = 5, expectedFrame) {

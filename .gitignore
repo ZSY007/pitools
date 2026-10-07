@@ -21,3 +21,8 @@ models.json
 !/docs/current-performance-measurement.md
 !/docs/python-migration.md
 !/docs/0.1.10-render-optimization.md
+!/docs/0.1.11-python-activity-core.md
+!/docs/0.1.11-performance-comparison.md
+!/docs/rust-feasibility.md
+__pycache__/
+*.pyc

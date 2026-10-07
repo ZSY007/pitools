@@ -1,9 +1,9 @@
 // Local, pure activity state. No filesystem, network, process, or Pi UI access.
 // Data and mixSlot are derived from dsh-working-activity 0.5.1 (BSD-3-Clause).
 // Copyright (c) 2026, chimney (ccch1mneyyy); see data/activity/LICENSE.
-import { safeText } from './core.ts';
+import { safeText, visibleTextTail } from './core.ts';
 import { PHRASES, FRAME_DATA, ACTIVITY_DATA_VERSION } from './data/activity/data.ts';
-export const ACTIVITY_VERSION = '0.1.10';
+export const ACTIVITY_VERSION = '0.1.11';
 export { ACTIVITY_DATA_VERSION };
 export const FRAME_NAMES = Object.keys(FRAME_DATA.presets);
 export const DEFAULT_ACTIVITY = { enabled: true, frames: 'moon8', lang: 'zh', narrate: true, contract: true, phrases: true };
@@ -120,6 +120,10 @@ export class ActivityState {
     this.phase = phase; this.phaseAt = now;
   }
   begin(now: number) { this.reset(); this.startedAt = now; this.setPhase('waiting', now); this.configure(this.config); }
+  turnStart(now: number) {
+    if (!this.live) this.begin(now);
+    else if (!this.active.size) this.streamStart(now);
+  }
   streamStart(now: number) {
     if (!this.live) this.begin(now);
     this.narration = ''; this.lastChunkAt = undefined;
@@ -133,10 +137,9 @@ export class ActivityState {
     const narration = extractNarration(visibleText);
     if (narration) this.narration = this.lastNarration = narration;
   }
-  messageEnd(message: any, now: number) {
+  messageEnd(message: any, now: number, text = visibleTextTail(message.content)) {
     if (!this.live) this.begin(now);
     if (!this.active.size) this.setPhase('thinking', now);
-    const text = (Array.isArray(message.content) ? message.content : []).filter(p => p?.type === 'text').map(p => p.text ?? '').join('\n');
     const narration = this.config.narrate ? extractNarration(text) : undefined;
     if (narration) { this.narration = this.lastNarration = narration; this.lastChunkAt = now; }
     if (!this.seenMessages.has(message)) {
@@ -211,6 +214,13 @@ export class ActivityState {
       text = `✓ ${this.lastTool.action} ${this.lastTool.detail || this.lastTool.name} · ${ms < 1000 ? `${Math.floor(ms)}ms` : activityDuration(ms)}`;
     } else text = `${narration || this.phrase(now)} · ${this.lang === 'zh' ? '总' : 'total '}${activityDuration(now - this.startedAt)}`;
     return `${frame} ${text}`.trim();
+  }
+  /** Plain JSON state for the Python core; message identity is supplied by the host. */
+  snapshot() {
+    return { config: { ...this.config }, phase: this.phase, startedAt: this.startedAt, phaseAt: this.phaseAt, thinkingPhases: this.thinkingPhases,
+      active: [...this.active.values()].map(tool => ({ ...tool })), completed: this.completed, firstToolAt: this.firstToolAt ?? null,
+      lastTool: this.lastTool ? { ...this.lastTool, error: !!this.lastTool.error } : null, narration: this.narration, lastNarration: this.lastNarration,
+      lastChunkAt: this.lastChunkAt ?? null, doneText: this.doneText, presetName: this.presetName, endAt: this.endAt ?? null, failure: this.failure, outputTokens: this.outputTokens };
   }
   nextWakeAt(now: number) {
     if (!this.config.enabled || !this.live) return undefined;

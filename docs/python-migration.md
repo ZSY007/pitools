@@ -1,6 +1,6 @@
 # pitools 替换为 Python 核心：技术思路
 
-> 状态：方案研究，尚未实施。基线为 pitools 0.1.9。本轮不做重构、原型、模型请求或压测。
+> 状态：0.1.11 已落地第一阶段——活动状态机的可选 Python worker（默认仍为 TS），见 [0.1.11 Python 活动核心](0.1.11-python-activity-core.md)。TraceStore、配对、索引和搜索尚未迁移。以下为原方案（基线 0.1.9）。
 >
 > **当前版本的性能分析单独放在 [current-performance-analysis.md](current-performance-analysis.md)**。本文只讨论如何替换业务核心，不把迁移后的预测当成目前的性能结论。
 

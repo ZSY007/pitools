@@ -4,7 +4,7 @@
 
 **Pi 终端里的轨迹、工具调用详情和工作状态。** Windows / macOS，终端原生，不打开浏览器。
 
-当前版本 **0.1.10**。独立实现，界面参考 DeepSeek Harness 的 Trajectory。
+当前版本 **0.1.11**。独立实现，界面参考 DeepSeek Harness 的 Trajectory。
 
 ## 安装与更新
 
@@ -100,9 +100,30 @@ Mac 的 Option 键可能默认输入特殊字符；可以在终端中设置为 M
 - 内存约保留最近 2,000 个事件，运行中调用不淘汰。时间轴按事件顺序排列，不是按秒缩放的图；暂不提供鼠标拖选/缩放或图片灯箱。
 - 外部文字上屏前清洗终端控制字符及双向文字控制符。工具已截断的输出无法恢复；图片只显示元信息。
 
-**插件运行时不联网、不启动子进程、不读凭证。** 安装/更新的网络操作由 Pi 的包管理 CLI 完成，不在插件内部下载和执行代码。
+**插件运行时不联网、不读凭证；默认 TS 核心不启动子进程。** 只有用户主动启用可选 Python 活动核心时，才启动一个私有 Python worker（见下文）。安装/更新的网络操作由 Pi 的包管理 CLI 完成，不在插件内部下载和执行代码。
 
 工具参数/结果本身可能包含敏感内容，分享截图或提交 issue 前请检查；没有自动脱敏。仓库不包含真实会话、账号、日志或机器配置。
+
+## 0.1.11 可选 Python 活动核心
+
+首行活动（月相、阶段短语、旁白、并行工具、完成统计）的状态机已有 Python 实现，**默认仍是 TS 核心**，需要主动启用：
+
+```text
+/pitools core status
+/pitools core python
+/pitools core ts
+```
+
+也可在启动 Pi 前设置 `PITOOLS_CORE=python`，会话开始时启动一次。需要 Python 3.11+，仅用标准库；解释器按 `PITOOLS_PYTHON`（绝对路径或 PATH 上的名称）→ Windows `py -3` / `python` / `python3` → macOS/Linux `python3` / `python` 的顺序显式解析。找不到时提示并继续用 TS，**不会自动安装 Python 或任何包**。
+
+- Python worker 只负责活动状态；轨迹、详情、搜索、主题、Markdown/高亮渲染仍由 TS 与 Pi 原生实现，界面、快捷键和 widget 名称不变。
+- 私有 stdin/stdout JSONL，`shell:false`、参数数组、`-I -B` 隔离模式、最小环境变量（不转发模型 token / 账号变量），不开 TCP/HTTP，不读会话或凭证，不写文件。只发送活动所需的最小字段：旁白只发可见文本末尾 301 个 UTF-16 单元，工具只发命令/路径等摘要字段。
+- TS 核心持续运行作为回滚：worker 启动失败、崩溃、坏 JSON、版本不符、2 秒无响应或反压超限时，提示一次并回退 TS，**不自动重启**；`/pitools core python` 可手动重试。`session_shutdown` / `/reload` / `core ts` 会结束 worker。
+- `/pitools core status` 显示 worker pid。逐视图 TS 对照默认关闭（会额外耗 CPU），诊断时用 `/pitools core verify on` 或 `PITOOLS_CORE_VERIFY=1` 打开，状态里显示一致/不一致计数。
+- delta 采用有界事件批次（名义 4ms、64KiB/64 条上限），不丢事件或改观测时间；关键事件先冲刷旧 delta。事件全部按序发送，另外合并“观察”：同一时刻最多一个视图请求在途；流式 delta 最多每 120 ms 请求一次视图（与宿主绘制节流一致），工具/消息结束等关键事件立即请求；视图内容不变不重绘；超时看门狗只在有请求在途时运行。
+- 偏好不写入会话；`/reload` 后回到默认 TS，除非设置了 `PITOOLS_CORE=python`。
+
+worker 是同一用户的本地进程，不是权限沙箱。设计与验证边界见 [0.1.11 Python 活动核心](docs/0.1.11-python-activity-core.md)。
 
 ## 0.1.10 渲染优化
 
@@ -114,7 +135,10 @@ Mac 的 Option 键可能默认输入特殊字符；可以在终端中设置为 M
 
 - [当前 0.1.9 性能分析](docs/current-performance-analysis.md)：目前代码的 CPU/内存热点、已有保护及优化顺序；静态分析，不冒充实测。
 - [当前性能 Windows 隔离实测](docs/current-performance-measurement.md)：受控堆增量、详情/流式耗时、异常刷新复现与临时缓存对照；不等于真实会话精确独占占用。
-- [Python 核心替换技术思路](docs/python-migration.md)：接口层分工、内部协议、兼容性、安全边界和分阶段实施；尚未重构。
+- [Python 核心替换技术思路](docs/python-migration.md)：接口层分工、内部协议、兼容性、安全边界和分阶段实施。
+- [0.1.11 Python 活动核心](docs/0.1.11-python-activity-core.md)：第一阶段落地范围、协议、对照测试与未迁移部分。
+- [0.1.11 性能对照](docs/0.1.11-performance-comparison.md)：双模式实测、批处理/文本热路径优化与测量边界；不宣称 Python 更省资源。
+- [Rust 可行性调研](docs/rust-feasibility.md)：协议探针实测、UTF-16 兼容问题与 worker/Node-API/Wasm 路线；尚未集成 Rust。
 
 ## 开发与验证
 
@@ -124,7 +148,13 @@ cd pitools
 npm test
 ```
 
-28 项单元测试无需 npm install。CI 在 Windows / macOS / Linux 上使用 Node 24 运行这些纯数据测试，不访问真实模型或用户会话。
+50 项 Node 单元测试无需 npm install；其中 Python worker 相关测试在找不到解释器时跳过（可用 `PITOOLS_PYTHON` 指定）。Python 侧：
+
+```sh
+python -m unittest discover -s python/tests
+```
+
+CI 在 Windows / macOS / Linux 上使用 Node 24 与 Python 3.11 / 3.13 运行这些纯数据测试，不访问真实模型或用户会话。
 
 实际宿主回归需设置 `PI_HOST_ROOT` 为已安装的 `@earendil-works/pi-coding-agent` 包目录：
 

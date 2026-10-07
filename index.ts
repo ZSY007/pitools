@@ -1,22 +1,33 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from '@earendil-works/pi-coding-agent';
 import { Input, matchesKey, parseColor, truncateToWidth, visibleWidth } from '@earendil-works/pi-tui';
-import { TraceStore, DetailCache, safeText, json, summary, duration, contentText, emptyThinking, missingThinkingCount, validTimestamp, validModelTiming, timingInfo, CORE_VERSION } from './core.ts';
+import { TraceStore, DetailCache, BlockTextCache, visibleTextTail, safeText, json, summary, duration, contentText, emptyThinking, missingThinkingCount, validTimestamp, validModelTiming, timingInfo, CORE_VERSION } from './core.ts';
 import { renderDetail, detailThemeKey, RENDERER_VERSION } from './rendering.ts';
 
 import { ActivityState, normalizeActivity, restoreActivityConfig, narrationContract, FRAME_NAMES, ACTIVITY_VERSION, ACTIVITY_DATA_VERSION } from './activity.ts';
+import { ActivityCore, PYTHON_CORE_VERSION } from './python-core.ts';
 
-const VERSION = '0.1.10';
+const VERSION = '0.1.11';
 
 export default function pitools(pi: ExtensionAPI) {
   // Fail once at load time, before any stream handlers/timers are registered,
   // rather than flooding every message with missing-function exceptions.
-  const required = { TraceStore, DetailCache, safeText, json, summary, duration, contentText, emptyThinking, missingThinkingCount, validTimestamp, validModelTiming, timingInfo, renderDetail, detailThemeKey, ActivityState, normalizeActivity, restoreActivityConfig, narrationContract };
+  const required = { TraceStore, DetailCache, BlockTextCache, visibleTextTail, safeText, json, summary, duration, contentText, emptyThinking, missingThinkingCount, validTimestamp, validModelTiming, timingInfo, renderDetail, detailThemeKey, ActivityState, ActivityCore, normalizeActivity, restoreActivityConfig, narrationContract };
   const missing = Object.entries(required).filter(([, value]) => typeof value !== 'function').map(([name]) => name);
-  if (missing.length || CORE_VERSION !== VERSION || RENDERER_VERSION !== VERSION || ACTIVITY_VERSION !== VERSION || ACTIVITY_DATA_VERSION !== VERSION) {
-    throw new Error(`pitools 模块版本不一致：入口 ${VERSION}，核心 ${CORE_VERSION ?? '未知'}，渲染 ${RENDERER_VERSION ?? '未知'}，活动 ${ACTIVITY_VERSION ?? '未知'}，数据 ${ACTIVITY_DATA_VERSION ?? '未知'}${missing.length ? `；缺少 ${missing.join(', ')}` : ''}。请替换完整插件目录后 /reload，必要时重启 Pi。`);
+  if (missing.length || CORE_VERSION !== VERSION || RENDERER_VERSION !== VERSION || ACTIVITY_VERSION !== VERSION || ACTIVITY_DATA_VERSION !== VERSION || PYTHON_CORE_VERSION !== VERSION) {
+    throw new Error(`pitools 模块版本不一致：入口 ${VERSION}，核心 ${CORE_VERSION ?? '未知'}，渲染 ${RENDERER_VERSION ?? '未知'}，活动 ${ACTIVITY_VERSION ?? '未知'}，数据 ${ACTIVITY_DATA_VERSION ?? '未知'}，Python 适配 ${PYTHON_CORE_VERSION ?? '未知'}${missing.length ? `；缺少 ${missing.join(', ')}` : ''}。请替换完整插件目录后 /reload，必要时重启 Pi。`);
   }
   const store = new TraceStore();
-  const activity = new ActivityState();
+  let notifyCtx: ExtensionContext | undefined;
+  // TS core is the default and always-running fallback; Python is opt-in (/pitools core python or PITOOLS_CORE=python).
+  const activity = new ActivityCore({
+    // Python view replies: wake ticks paint at once (like TS); other changes use the 120ms throttle; unchanged views do not repaint.
+    onChange: mode => { if (mode === 'now') { if (tuiActive && enabled) paint(); scheduleWake(); } else if (mode === 'soon') refresh(false); else scheduleWake(); },
+    onFallback: category => {
+      try { notifyCtx?.ui.notify(`pitools Python 核心已停止（${category}），已回退 TS 核心；不会自动重启。/pitools core python 可重试。`, 'warning'); } catch { /* UI may be closing. */ }
+      refresh();
+    },
+  });
+  let pythonAtStart = process.env.PITOOLS_CORE === 'python';
   if (typeof store.remove !== 'function' || typeof store.touch !== 'function') throw new Error('pitools 核心模块不完整，请替换完整目录后重载。');
   let enabled = true;
   let selected = -1;
@@ -30,6 +41,7 @@ export default function pitools(pi: ExtensionAPI) {
   let tuiActive = false;
   let lastPaint = 0;
   let streaming = new Map<number, any>();
+  const blockText = new BlockTextCache();
   const missingThinkingByCall = new Map<string, number>();
   const pendingModelTimings = new Map<object, any>();
   function persistModelTiming(message: object, messageEntryId: string) {
@@ -75,7 +87,11 @@ export default function pitools(pi: ExtensionAPI) {
     const traceWake = store.records.some((r: any) => r.live) ? now + 500 : undefined;
     const next = Math.min(wake ?? Infinity, traceWake ?? Infinity);
     if (!Number.isFinite(next)) return; // No idle/done animation clock.
-    timer = setTimeout(() => { timer = undefined; paint(); scheduleWake(); }, Math.max(1, next - now));
+    // TS paints now; the Python core paints when its fresh view arrives.
+    timer = setTimeout(() => {
+      timer = undefined;
+      if (activity.effective === 'python') activity.tick(); else { paint(); scheduleWake(); }
+    }, Math.max(1, next - now));
     timer.unref?.();
   }
   const refresh = (immediate = true) => {
@@ -95,7 +111,7 @@ export default function pitools(pi: ExtensionAPI) {
   function titleLine(theme: Theme, width: number, title: string, compact: string) {
     const text = activity.line(Date.now());
     if (!text) return theme.fg('accent', truncateToWidth(title, width));
-    const markerColor = activity.failure ? 'error' : activity.phase === 'done' ? 'success' : 'muted';
+    const markerColor = activity.failed ? 'error' : activity.phase === 'done' ? 'success' : 'muted';
     const marker = theme.fg(markerColor, '●');
     if (width < 3) return marker;
     const lineWidth = width - 2; // One column for the dot, one for its space.
@@ -153,13 +169,40 @@ export default function pitools(pi: ExtensionAPI) {
   }
   function restore(ctx: ExtensionContext) {
     closeInspector?.();
+    blockText.clear();
     streaming.clear(); missingThinkingByCall.clear(); pendingModelTimings.clear(); requestStart = undefined; firstToken = undefined;
-    tuiActive = isTui(ctx);
+    tuiActive = isTui(ctx); notifyCtx = ctx;
     const branch = ctx.sessionManager.getBranch();
     activity.reset(restoreActivityConfig(branch));
     store.restore(branch);
     follow = true; selected = store.records.length - 1; selectedRecord = undefined;
     widget(ctx); refresh();
+    // A session boundary may start the requested worker once; failures are never auto-restarted.
+    if (pythonAtStart && !activity.python_active && tuiActive) { pythonAtStart = false; void startPython(ctx, false); }
+  }
+  async function startPython(ctx: ExtensionContext, announce = true) {
+    const failure = await activity.usePython();
+    if (failure) ctx.ui.notify(failure === 'python_not_found'
+      ? 'pitools 未找到 Python 3.11+ 解释器，继续使用 TS 核心。可设置 PITOOLS_PYTHON 为解释器绝对路径；pitools 不会自动安装 Python。'
+      : `pitools Python 核心启动失败（${failure}），继续使用 TS 核心。`, 'warning');
+    else if (announce) ctx.ui.notify(`pitools 已切换到 Python 活动核心：${activity.status()}`, 'info');
+    refresh();
+  }
+  async function coreCommand(args: string, ctx: ExtensionContext) {
+    const choice = args.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!choice || choice === 'status' || choice === 'help') {
+      ctx.ui.notify(`pitools 活动核心：${activity.status()}\n/pitools core python 启用可选 Python worker（Python 3.11+，标准库，私有管道）；/pitools core ts 回到默认 TS 核心；/pitools core verify on|off 开关逐视图 TS 对照（诊断用，会增加 CPU）。轨迹、详情和渲染仍由 TS/Pi 原生实现。`, 'info'); return;
+    }
+    if (choice === 'verify on' || choice === 'verify off') {
+      activity.verify = choice === 'verify on';
+      ctx.ui.notify(`pitools 逐视图 TS 对照已${activity.verify ? '开启' : '关闭'}。`, 'info'); return;
+    }
+    if (choice === 'python') {
+      if (!isTui(ctx)) { ctx.ui.notify('pitools Python 活动核心只在 Pi 交互终端中启动。', 'warning'); return; }
+      notifyCtx = ctx; pythonAtStart = false; return startPython(ctx);
+    }
+    if (choice === 'ts') { pythonAtStart = false; activity.useTs(); ctx.ui.notify('pitools 已使用默认 TS 活动核心，Python worker 已关闭。', 'info'); refresh(); return; }
+    ctx.ui.notify('参数无效，请用 /pitools core status|python|ts|verify on|verify off。', 'warning');
   }
   async function inspect(ctx: ExtensionContext) {
     if (!isTui(ctx)) { ctx.ui.notify('pitools 详情需要 Pi 交互终端。', 'warning'); return; }
@@ -305,9 +348,10 @@ export default function pitools(pi: ExtensionAPI) {
     refresh();
   }
   pi.registerCommand('pitools', {
-    description: '终端轨迹与工具调用详情：on/off/toggle/live/prev/next/activity/version/help',
+    description: '终端轨迹与工具调用详情：on/off/toggle/live/prev/next/activity/core/version/help',
     handler: async (args, ctx) => {
       if (/^activity(?:\s|$)/i.test(args.trim())) return activityCommand(args.trim().slice(8), ctx);
+      if (/^core(?:\s|$)/i.test(args.trim())) return coreCommand(args.trim().slice(4), ctx);
       switch (args.trim().toLowerCase()) {
         case 'on': enabled = true; widget(ctx); refresh(); break;
         case 'off': enabled = false; closeInspector?.(); widget(ctx); refresh(); break;
@@ -315,8 +359,8 @@ export default function pitools(pi: ExtensionAPI) {
         case 'live': follow = true; refresh(); break;
         case 'prev': choose(-1); break;
         case 'next': choose(1); break;
-        case 'version': ctx.ui.notify(`pitools ${VERSION} · 核心 ${CORE_VERSION} · 渲染 ${RENDERER_VERSION} · 活动 ${ACTIVITY_VERSION} · 数据 ${ACTIVITY_DATA_VERSION} · 当前进程已加载 TS 模块`, 'info'); break;
-        case 'help': ctx.ui.notify('pitools：蓝色输入、紫色模型、橙色工具，失败标红。Alt+, / Alt+. 选事件；Alt+T 隐藏/显示；Alt+I 或 /pitools 打开轨迹列表与详情。详情里 ←→ 选事件，Tab 换概述/参数/结果/Schema/计时，↑↓/PgUp/PgDn 滚动，/ 搜索，R 切代码渲染/原文，Esc 关闭。宽终端左右分栏，窄终端上下布局。/pitools live 跟随最新；on/off 开关。首行最左侧显示工作月相/阶段/旁白，文字与统计统一主题强调色，仅 ● 灰/绿/红表示状态；/pitools activity help 管理。历史未记录的数据不会猜测。/pitools version 检查当前进程加载的版本。', 'info'); break;
+        case 'version': ctx.ui.notify(`pitools ${VERSION} · 核心 ${CORE_VERSION} · 渲染 ${RENDERER_VERSION} · 活动 ${ACTIVITY_VERSION} · 数据 ${ACTIVITY_DATA_VERSION} · Python 适配 ${PYTHON_CORE_VERSION} · 当前进程已加载 TS 模块 · 活动核心 ${activity.effective === 'python' ? 'Python' : 'TS'}`, 'info'); break;
+        case 'help': ctx.ui.notify('pitools：蓝色输入、紫色模型、橙色工具，失败标红。Alt+, / Alt+. 选事件；Alt+T 隐藏/显示；Alt+I 或 /pitools 打开轨迹列表与详情。详情里 ←→ 选事件，Tab 换概述/参数/结果/Schema/计时，↑↓/PgUp/PgDn 滚动，/ 搜索，R 切代码渲染/原文，Esc 关闭。宽终端左右分栏，窄终端上下布局。/pitools live 跟随最新；on/off 开关。首行最左侧显示工作月相/阶段/旁白，文字与统计统一主题强调色，仅 ● 灰/绿/红表示状态；/pitools activity help 管理；/pitools core 查看/切换可选 Python 活动核心。历史未记录的数据不会猜测。/pitools version 检查当前进程加载的版本。', 'info'); break;
         case '': await inspect(ctx); break;
         default: ctx.ui.notify('未知参数，请用 /pitools help。', 'warning');
       }
@@ -333,7 +377,7 @@ export default function pitools(pi: ExtensionAPI) {
     else delete event.systemPromptOptions.sections.pitools_activity;
   });
   pi.on('agent_start', () => { activity.begin(Date.now()); refresh(); });
-  pi.on('turn_start', () => { if (!activity.live) activity.begin(Date.now()); else if (!activity.active.size) activity.streamStart(Date.now()); refresh(); });
+  pi.on('turn_start', () => { activity.turnStart(Date.now()); refresh(); });
   pi.on('agent_settled', () => { activity.finish(Date.now()); refresh(); });
   pi.on('session_tree', (_e, ctx) => restore(ctx));
   pi.on('session_compact', (_e, ctx) => restore(ctx));
@@ -343,7 +387,7 @@ export default function pitools(pi: ExtensionAPI) {
       const submitted = validTimestamp(e.message.timestamp);
       store.add({ kind: 'input', name: '输入', text: contentText(e.message.content), turn: store.turn, recordedAt: submitted ?? Date.now(), recordedAtSource: submitted !== undefined ? 'message' : 'observed' }); refresh();
     }
-    if (e.message.role === 'assistant') { streaming.clear(); requestStart = Date.now(); firstToken = undefined; activity.streamStart(requestStart); refresh(); }
+    if (e.message.role === 'assistant') { blockText.clear(); streaming.clear(); requestStart = Date.now(); firstToken = undefined; activity.streamStart(requestStart); refresh(); }
   });
   pi.on('message_update', e => {
     if (e.message.role !== 'assistant') return;
@@ -352,20 +396,21 @@ export default function pitools(pi: ExtensionAPI) {
     const blocks = Array.isArray(e.message.content) ? e.message.content : [];
     const eventBlock = blocks[e.assistantMessageEvent.contentIndex];
     const delta = 'delta' in e.assistantMessageEvent ? safeText(e.assistantMessageEvent.delta) : eventBlock?.type === 'thinking' || eventBlock?.type === 'text' ? contentText([eventBlock]) : '';
-    if (type.endsWith('_delta')) activity.delta(type, blocks.filter(p => p?.type === 'text').map(p => p.text ?? '').join('\n'), Date.now());
+    if (type.endsWith('_delta')) activity.delta(type, visibleTextTail(blocks), Date.now());
     if (type.endsWith('_delta') && firstToken === undefined && delta.trim()) firstToken = Date.now();
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
       if (block?.type !== 'thinking' && block?.type !== 'text') continue;
       // A signed empty thinking block observed during a text event is not
       // evidence that visible reasoning is still being generated.
-      if (emptyThinking(block) && !type.startsWith('thinking') && !streaming.has(i)) continue;
+      const cleanText = blockText.get(block);
+      if (block.type === 'thinking' && !cleanText.trim() && !type.startsWith('thinking') && !streaming.has(i)) continue;
       let record = streaming.get(i);
       if (!record) {
         record = store.add({ kind: 'model', name: block.type === 'thinking' ? '思考' : '回复', text: '', turn: store.turn, live: true, start: requestStart, messageAt: validTimestamp(e.message.timestamp) });
         streaming.set(i, record);
       }
-      record.text = contentText([block]); record.raw = block;
+      record.text = cleanText; record.raw = block;
       record.firstTokenMs = firstToken === undefined || requestStart === undefined ? undefined : Math.max(0, firstToken - requestStart);
       store.touch(record);
     }
@@ -377,6 +422,7 @@ export default function pitools(pi: ExtensionAPI) {
     const hidden = missingThinkingCount(blocks);
     const endedAt = Date.now();
     activity.messageEnd(e.message, endedAt);
+    blockText.clear();
     if (requestStart !== undefined) pendingModelTimings.set(e.message, { start: requestStart, end: endedAt, elapsed: Math.max(0, endedAt - requestStart), ...(firstToken === undefined ? {} : { firstTokenMs: Math.max(0, firstToken - requestStart) }) });
     store.hiddenThinking += hidden;
     for (let i = 0; i < blocks.length; i++) {
@@ -444,13 +490,14 @@ export default function pitools(pi: ExtensionAPI) {
       if (r.live && r.name === '思考' && !safeText(r.text).trim()) { store.remove(r); store.hiddenThinking++; }
       else { if (r.live) r.incomplete = true; r.live = false; delete r.modelMessage; store.touch(r); }
     }
-    streaming.clear(); missingThinkingByCall.clear(); requestStart = undefined; firstToken = undefined; refresh();
+    blockText.clear(); streaming.clear(); missingThinkingByCall.clear(); requestStart = undefined; firstToken = undefined; refresh();
   });
   pi.on('session_shutdown', () => {
     tuiActive = false;
     if (timer) clearTimeout(timer); timer = undefined;
     if (paintTimer) clearTimeout(paintTimer); paintTimer = undefined;
-    activity.reset(); repaint = undefined; inspectorRepaint = undefined;
+    activity.reset(); activity.dispose(); blockText.clear(); repaint = undefined; inspectorRepaint = undefined; notifyCtx = undefined;
+    if (activity.requested === 'python' && !activity.failure) pythonAtStart = true; // Same instance may receive a new session_start.
     const close = closeInspector; closeInspector = undefined;
     streaming.clear(); missingThinkingByCall.clear(); pendingModelTimings.clear(); requestStart = undefined; firstToken = undefined;
     close?.();
