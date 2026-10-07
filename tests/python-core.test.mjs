@@ -224,7 +224,10 @@ test('view requests coalesce: bursts, paced streams, unchanged views and idle wa
     core.toolStart('t', 'bash', { command: 'npm test' }, Date.now());
     await new Promise(r => setTimeout(r, 30)); await drained(core);
     assert.ok(core.line(Date.now()).includes('npm test')); assert.equal(changes.at(-1), 'soon');
-    changes.length = 0; core.requestView(Date.now()); await drained(core);
+    // Compare the same authoritative timestamp: Date.now() can cross a moon
+    // or elapsed-duration boundary on a fast CI runner, which should repaint.
+    const unchangedAt = Date.now(); core.requestView(unchangedAt); await drained(core);
+    changes.length = 0; core.requestView(unchangedAt); await drained(core);
     assert.deepEqual(changes, ['none'], 'same line/phase/dot: no repaint');
     // The watchdog only exists while a request is outstanding.
     await new Promise(r => setTimeout(r, 700));
