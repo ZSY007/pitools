@@ -225,7 +225,7 @@ cargo build --release --locked --manifest-path rust/pitools-core/Cargo.toml
 
 真实 Rust worker 的 Node 测试需要用 `PITOOLS_RUST_CORE` 指定已构建的 executable；未提供时会明确跳过，不能将跳过视作通过。Python 测试需要可用解释器。宿主加载器验证见 [三包指南](docs/editions.md#构建与发布门禁) 及 `scripts/verify-*.mjs`。
 
-[0.1.12 发布构建](https://github.com/ZSY007/pitools/actions/runs/37705289466) 通过 82 项 Node、13 项 Python、19 项 Rust release 测试及 Windows / macOS arm64+x64 / Linux 的原生构建、模块化与 bundled Pi 加载器验收。CI 不替代用户实际终端、HUD 或长会话验收。
+[0.1.13 发布构建](https://github.com/ZSY007/pitools/actions/runs/37710487865) 通过 85 项 Node、14 项 Python、20 项 Rust release 测试及 Windows / macOS arm64+x64 / Linux 的原生构建、模块化与 bundled Pi 加载器验收。CI 不替代用户实际终端、HUD 或长会话验收。
 
 ## 许可
 
