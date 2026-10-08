@@ -9,7 +9,7 @@ if (!host) throw new Error('Set PI_HOST_ROOT to the installed @earendil-works/pi
 const { loadExtensions } = await import(pathToFileURL(path.join(host, 'dist/core/extensions/loader.js')));
 const bundle = process.env.PI_BUNDLED_LOADER === '1' ? await import(pathToFileURL(path.join(host, 'dist/bundle/index.js'))) : undefined;
 const hostRequire = createRequire(path.join(host, 'package.json'));
-const { visibleWidth, TuiMainScreen, TuiAltScreen } = await import(pathToFileURL(hostRequire.resolve('@earendil-works/pi-tui')));
+const { visibleWidth, parseColor, TuiMainScreen, TuiAltScreen } = await import(pathToFileURL(hostRequire.resolve('@earendil-works/pi-tui')));
 const { loadThemeFromPath, getThemeByName, setThemeInstance } = await import(pathToFileURL(path.join(host, 'dist/modes/interactive/theme/theme.js')));
 const entry = process.env.PI_EXTENSION_ENTRY ?? fileURLToPath(new URL('../index.ts', import.meta.url));
 const strip = s => s.replace(/\x1b\[[0-9;]*m/g, '');
@@ -59,7 +59,8 @@ async function verify(themeName, mode) {
     }
     widths(widget);
     const freshHeader = strip(widget.render(160)[0]);
-    assert.ok(freshHeader.startsWith('● 🌑 ⏵ 待机中'), 'fresh Pi sessions must show the idle activity');
+    assert.ok(freshHeader.startsWith('● π     ⏵ 待机中'), 'fresh Pi sessions must show the idle activity');
+    assert.ok(widget.render(160)[0].startsWith(theme.style('●', {fg: parseColor('#7aa2f7')})), 'idle dot is blue');
     assert.ok(!freshHeader.includes('总0s'), 'do not fabricate task timing before any task');
     await emit('message_start', { message: { role: 'user', content: '检查中文路径' } });
     const assistant = { role: 'assistant', content: [{ type: 'thinking', thinking: '初始思考' }, { type: 'text', text: '初始回复' }, { type: 'thinking', thinking: '后续思考' }], usage: { input: 10, output: 20, totalTokens: 30 } };
@@ -298,26 +299,26 @@ async function verify(themeName, mode) {
       assert.ok(prompt.systemPromptOptions.sections.pitools_activity.startsWith('[状态栏]'));
       assert.equal(prompt.systemPromptOptions.sections.other_plugin, 'preserved');
       await emit('agent_start'); assert.ok(scheduled.size > 0);
-      assert.ok([...scheduled].some(t => t.delay <= 120));
+      assert.ok([...scheduled].some(t => t.delay <= 240));
       const activityMessage = { role: 'assistant', content: [{ type: 'thinking', thinking: '⏵ PRIVATE-REASONING' }, { type: 'text', text: '⏵ 验证左侧活动\n正常回复正文' }], usage: { output: 23 } };
       await emit('message_start', { message: activityMessage });
       await emit('message_update', { message: activityMessage, assistantMessageEvent: { type: 'thinking_delta', contentIndex: 0, delta: '⏵ PRIVATE-REASONING' } });
       assert.ok(!strip(widget.render(160)[0]).includes('PRIVATE-REASONING'));
       await emit('message_update', { message: activityMessage, assistantMessageEvent: { type: 'text_delta', contentIndex: 1, delta: '⏵ 验证左侧活动' } });
       const header = strip(widget.render(160)[0]);
-      assert.ok(/^● [🌑🌒🌓🌔🌕🌖🌗🌘]/u.test(header), 'status marker and activity must start at column zero');
+      assert.ok(/^● π [· ]{3} /u.test(header), 'status marker and activity must start at column zero');
       assert.ok(header.includes('⏵ 验证左侧活动'));
       assert.ok(header.indexOf('pitools · 第 ') > header.indexOf('⏵'), 'statistics follow activity, not the other way around');
-      const assertHeaderColor = (component, markerColor = 'muted') => { const line = component.render(160)[0]; const plain = strip(line); assert.ok(plain.startsWith('● ')); assert.equal(line, theme.fg(markerColor, '●') + ' ' + theme.fg('accent', plain.slice(2)), 'only the dot changes color; all text stays accent'); };
+      const assertHeaderColor = (component, markerColor = 'blue') => { const line = component.render(160)[0]; const plain = strip(line); assert.ok(plain.startsWith('● ')); const dot = markerColor === 'blue' ? theme.style('●', {fg: parseColor('#7aa2f7')}) : theme.fg(markerColor, '●'); assert.equal(line, dot + ' ' + theme.fg('accent', plain.slice(2)), 'only the dot changes color; all text stays accent'); };
       assertHeaderColor(widget);
-      assert.ok(/^● [🌑🌒🌓🌔🌕🌖🌗🌘]/u.test(strip(widget.render(20)[0])), 'narrow screens prioritize marker and activity');
+      assert.ok(/^● π [· ]{3} /u.test(strip(widget.render(20)[0])), 'narrow screens prioritize marker and activity');
       widths(widget);
       const activityDetail = command(''); widths(inspector); assertHeaderColor(inspector);
-      assert.ok(/^● [🌑🌒🌓🌔🌕🌖🌗🌘]/u.test(strip(inspector.render(160)[0])));
+      assert.ok(/^● π [· ]{3} /u.test(strip(inspector.render(160)[0])));
       inspector.handleInput('\x1b'); await activityDetail;
       const presets = JSON.parse(fs.readFileSync(path.join(path.dirname(entry), 'data/activity/frames.json'), 'utf8')).presets;
       for (const preset of Object.keys(presets)) { await command(`activity frames ${preset}`); widths(widget); }
-      await command('activity frames moon8');
+      await command('activity frames pi');
       const beforeStream = scheduled.size;
       for (let i = 0; i < 20; i++) await emit('message_update', { message: activityMessage, assistantMessageEvent: { type: 'text_delta', contentIndex: 1, delta: 'x' } });
       assert.ok(scheduled.size <= 2 && scheduled.size <= Math.max(2, beforeStream), 'at most one wake and one throttled paint, never a per-token queue');
@@ -328,11 +329,11 @@ async function verify(themeName, mode) {
       await emit('agent_end', { messages: [activityMessage] });
       assert.equal(scheduled.size, 0, 'done must stop animation and throttled paint clocks');
       const summary = strip(widget.render(160)[0]); assert.ok(summary.includes('1 工具'));
-      assert.ok(/^● [🌑🌒🌓🌔🌕🌖🌗🌘]/u.test(summary));
+      assert.ok(summary.startsWith('● π     ⏵ '));
       assert.ok(summary.includes('⏵ 验证左侧活动'), 'completion preserves actual visible narration');
       assertHeaderColor(widget, 'error');
       assert.equal(strip(widget.render(160)[0]), summary);
-      await emit('agent_start'); assertHeaderColor(widget, 'muted');
+      await emit('agent_start'); assertHeaderColor(widget, 'blue');
       const healthy = { role: 'assistant', content: [{ type: 'text', text: 'healthy completed activity' }] };
       await emit('message_start', { message: healthy }); await emit('message_end', { message: healthy });
       await emit('agent_end', { messages: [healthy] }); assertHeaderColor(widget, 'success');
@@ -380,7 +381,7 @@ async function verify(themeName, mode) {
     const terminal = { columns: 80, rows: 30, kittyProtocolActive: false,
       start() {}, stop() {}, async drainInput() {}, write(s) { writes.push(s); },
       moveBy() {}, hideCursor() {}, showCursor() {}, clearLine() {}, clearFromCursor() {}, clearScreen() {}, setTitle() {}, setProgress() {} };
-    await emit('agent_start'); // Compose an active moon header in the actual TUI.
+    await emit('agent_start'); // Compose an active header in the actual TUI.
     for (const Tui of [TuiMainScreen, TuiAltScreen]) {
     await command('on');
     const realTui = new Tui(terminal);
@@ -408,7 +409,7 @@ async function verify(themeName, mode) {
     inspector?.dispose(); await emit('session_shutdown'); await emit('session_shutdown');
     if (isolated) fs.rmSync(isolated, { recursive: true, force: true });
   }
-  console.log(`PASS: ${bundle ? 'bundled' : 'modular'} ${themeName}/${mode}; real loader/Theme/TUI; left-first activity/uniform text/gray-green-red status dot/35 presets/contract/idle clocks/non-TUI; streaming blocks; input/tool/model timing; saved timing replay; abort fallback; exact message identity; empty/signed reasoning; replay; resizing; toggle; syntax/Markdown/raw; search; renderer fault isolation; repeated shutdown.`);
+  console.log(`PASS: ${bundle ? 'bundled' : 'modular'} ${themeName}/${mode}; real loader/Theme/TUI; left-first activity/uniform text/blue-green-red status dot/pi+35 presets/contract/idle clocks/non-TUI; streaming blocks; input/tool/model timing; saved timing replay; abort fallback; exact message identity; empty/signed reasoning; replay; resizing; toggle; syntax/Markdown/raw; search; renderer fault isolation; repeated shutdown.`);
 }
 for (const themeName of ['dark', 'light']) for (const mode of ['truecolor', '256color']) await verify(themeName, mode);
 await verify('system', 'terminal-default');
@@ -469,7 +470,7 @@ async function verifyWorker(kind) {
   const status = await a.status();
   assert.ok(/TS 对照一致 \d+ \/ 不一致 0/.test(status), status);
   a.notifications.length = 0; await a.command('version');
-  assert.ok(a.notifications[0].text.includes(`活动核心 ${name}`) && a.notifications[0].text.includes(`${name} 适配 0.1.12`));
+  assert.ok(a.notifications[0].text.includes(`活动核心 ${name}`) && a.notifications[0].text.includes(`${name} 适配 0.1.13`));
   await a.command('core ts');
   await until(() => { try { process.kill(pid, 0); return false; } catch { return true; } }, '/pitools core ts stops the worker');
   assert.ok((await a.status()).includes('实际 TS'));

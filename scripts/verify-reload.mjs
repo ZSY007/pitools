@@ -59,7 +59,7 @@ try {
     fs.cpSync(path.join(source, 'python'), path.join(cwd, 'python'), { recursive: true, filter: file => !file.includes('__pycache__') });
     const themeApi = await import(pathToFileURL(path.join(host, 'dist/modes/interactive/theme/theme.js')));
     const theme = themeApi.getThemeByName('dark'); themeApi.setThemeInstance(theme);
-    async function exercise(expectedPlaceholder = '思考中…', rounds = 5, expectedFrame) {
+    async function exercise(expectedPlaceholder = '思考中…', rounds = 5, expectedFrame, framePreset = 'moon8') {
       modular.clearExtensionCache();
       const current = await load(entry, cwd); assert.deepEqual(current.errors, []);
       const extension = current.extensions[0], notifications = [];
@@ -73,6 +73,7 @@ try {
       const emit = async (event, data = {}) => { for (const handler of extension.handlers.get(event) ?? []) await handler(data, ctx); };
       try {
         await emit('session_start');
+        if (expectedFrame) { await extension.commands.get('pitools').handler(`activity frames ${framePreset}`, ctx); notifications.length = 0; }
         for (let i = 0; i < rounds; i++) {
           const message = { role: 'assistant', content: [{ type: 'thinking', thinking: '', thinkingSignature: 'opaque' }] };
           await emit('message_start', { message });
@@ -101,6 +102,10 @@ try {
     fs.writeFileSync(dataPath, dataSource.replace(/"frames": \[\s*"🌑",[\s\S]*?\]/, '"frames": ["RELOAD-FRAME"]'));
     await exercise('热升级验证已更新…', 2, 'RELOAD-FRAME');
     fs.writeFileSync(dataPath, dataSource);
+    const activityPath = path.join(cwd, 'activity.ts'), activitySource = fs.readFileSync(activityPath, 'utf8');
+    fs.writeFileSync(activityPath, activitySource.replace("frames: ['π ·  ', 'π ·· ', 'π ···']", "frames: ['RELOAD-PI']"));
+    await exercise('热升级验证已更新…', 2, 'RELOAD-PI', 'pi');
+    fs.writeFileSync(activityPath, activitySource);
     // Mixed file versions must fail at factory time, never leave stream handlers
     // registered that repeatedly throw during every message.
     fs.writeFileSync(helperPath, original.replace(/export const CORE_VERSION = '[^']+';/, "export const CORE_VERSION = 'mismatch';"));

@@ -1,6 +1,6 @@
 # TS / Python / Rust：三个独立成品包
 
-0.1.12 分发 TS / Python / Rust 三个独立成品包，完成发布以各自 release 回执为准。不是把开发备份发给用户。
+0.1.13 分发 TS / Python / Rust 三个独立成品包，完成发布以各自 release 回执为准。不是把开发备份发给用户。
 
 | 产品 | 默认活动核心 | 用户要求 | 内容 |
 |---|---|---|---|
@@ -8,7 +8,7 @@
 | pitools-python | Python | 另需 Python 3.11+ | Python 标准库 worker + 完整 TS 回退 |
 | pitools-rust | Rust | 无需 Cargo/Python | 匹配平台 executable、许可证 + 完整 TS 回退 |
 
-三个产品使用逐字相同的 UI、轨迹、详情、搜索、时间/usage 和主题逻辑。Python/Rust 只迁移活动状态计算，不是假装全插件变成对应语言；不宣称它们比 TS 更省资源。
+三个产品使用逐字相同的 UI、轨迹、详情、搜索、时间/usage 和主题逻辑。默认动画为固定宽度的 `π` 点阵（240ms）；待机/完成清空点阵并停止动画。状态点蓝色表示待机/运行、绿色表示结束、红色表示最近失败，其余文字统一主题 accent。原有 35 套动画与随机选择顺序保留；已有会话可用 `/pitools activity frames pi` 切换。Python/Rust 只迁移活动状态计算，不是假装全插件变成对应语言；不宣称它们比 TS 更省资源。
 
 ## 安装：三选一
 
@@ -62,7 +62,7 @@ Release 提供三个具名 `.tgz` 成品包及 `SHA256SUMS`。下载一个并校
 
 共享仓库是维护源，成品通过 allowlist 生成而非手工复制整目录：
 
-1. Cargo release + 19 项 Rust 测试、13 项 Python、82 项 Node。
+1. Cargo release + 20 项 Rust 测试、14 项 Python、85 项 Node。
 2. 平台导出 executable 与许可证，Git source commit/版本/指纹匹配。
 3. 生成当地三包，通过真实模块化/bundled Pi 加载器：默认核心、共用 UI、UTF-16、工具身份、usage、互斥、reload、退出。
 4. 汇集四 target；生成三包，验证无多余文件，归档和 SHA256SUMS。

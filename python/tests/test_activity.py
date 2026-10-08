@@ -105,12 +105,29 @@ class Semantics(unittest.TestCase):
     self.assertEqual(_fixed1(0.05), '0.1')
 
   def test_config_and_presets(self):
-    self.assertEqual(len(FRAME_NAMES), 35)
-    self.assertEqual(normalize_activity({'frames': '__proto__', 'enabled': 'false', 'lang': 'xx'})['frames'], 'moon8')
+    self.assertEqual(len(FRAME_NAMES), 36)
+    self.assertEqual(FRAME_NAMES[-1], 'pi')
+    self.assertEqual(normalize_activity({'frames': '__proto__', 'enabled': 'false', 'lang': 'xx'})['frames'], 'pi')
     state = ActivityState(locale='en-US')
     state.configure({'lang': 'auto'})
-    self.assertEqual(state.line(0), '🌑 ⏵ Idle · ready for a task')
+    self.assertEqual(state.line(0), 'π     ⏵ Idle · ready for a task')
     self.assertIsNone(state.next_wake_at(0))
+
+
+  def test_pi_fixed_width_static_rest_and_legacy_moon(self):
+    state = ActivityState()
+    self.assertEqual(state.line(0), state.line(100000))
+    state.begin(1000)
+    for i, frame in enumerate(['π ·  ', 'π ·· ', 'π ···', 'π ·  ']):
+      self.assertEqual(state.frame(1000 + i * 240), frame)
+      self.assertEqual(len(state.frame(1000 + i * 240)), 5)
+    state.finish(1750)
+    self.assertTrue(state.line(1750).startswith('π     ⏵ '))
+    self.assertEqual(state.line(1750), state.line(999999))
+    self.assertIsNone(state.next_wake_at(1750))
+    state.configure({'frames': 'moon8'})
+    state.begin(2000)
+    self.assertEqual(state.frame(2120), '🌒')
 
 
 class WorkerProtocol(unittest.TestCase):

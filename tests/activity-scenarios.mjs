@@ -3,7 +3,7 @@
 // exactly what the host would send and the expectations are the TS core's view.
 import { ActivityCore } from '../python-core.ts';
 import { PHRASES, FRAME_DATA } from '../data/activity/data.ts';
-import { mixSlot } from '../activity.ts';
+import { mixSlot, FRAME_NAMES } from '../activity.ts';
 
 function prng(seed) {
   let a = seed >>> 0;
@@ -12,7 +12,7 @@ function prng(seed) {
 const toolNames = ['read', 'Read', 'bash', 'functions.bash', 'tools.grep', 'ffgrep', 'fffind', 'web_search', 'search-layer', 'mcp__x', 'GitHub', 'chrome_devtools', 'todo_write', 'unknown_tool', 'ſearch', 'Kead', 'READ\u212a', '', '  edit  ', '工具'];
 const pieces = ['⏵ 检查 README.MD', '⏵ inspect the patch. Then more', '⏵ 第一件\n⏵ 第二件。后续', 'plain reply ', '\n', '⏵ \x1b]52;c;SECRET\x07\x1b[31m红色\x1b[0m\t路径', '🌗🧑‍💻 emoji ', '\ud83d', '\ude00', 'e\u0301', '中文'.repeat(30), 'x'.repeat(120), '⏵ ' + '宽'.repeat(60), ' inline ⏵ marker', '\r\n⏵ crlf line', '\u2028⏵ ls', '⏵ a.b c.D', '⏵ Mr.Smith', '⏵ end.', '\ufeff⏵ bom'];
 const details = [{ command: 'echo "中文"\nprintf 42' }, { path: '/tmp/中文路径/文件.txt' }, { file_path: 'C:\\Users\\x\\a.ts' }, { query: 'search   terms\t\there' }, { url: 'https://example.com/' + 'p'.repeat(80) }, { command: 42 }, {}, undefined, { path: '\x1b[31mred\x1b[0m' }, { command: '🧑‍💻'.repeat(30) }];
-const presets = Object.keys(FRAME_DATA.presets);
+const presets = FRAME_NAMES;
 const lunar = Object.keys(PHRASES.lunarNewYearDays);
 const holidays = Object.keys(PHRASES.holiday.zh);
 

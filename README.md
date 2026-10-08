@@ -1,7 +1,7 @@
 # pitools
 
 [![tests](https://github.com/ZSY007/pitools/actions/workflows/test.yml/badge.svg)](https://github.com/ZSY007/pitools/actions/workflows/test.yml)
-[![version](https://img.shields.io/badge/version-0.1.12-blue)](https://github.com/ZSY007/pitools/releases/tag/v0.1.12)
+[![version](https://img.shields.io/badge/version-0.1.13-blue)](https://github.com/ZSY007/pitools/releases/tag/v0.1.13)
 [![license](https://img.shields.io/badge/license-BSD--3--Clause-green)](LICENSE)
 
 **在 Pi 终端里，看清模型做了什么、工具返回了什么，以及任务进行到哪里。**
@@ -18,7 +18,7 @@ pitools 是 Pi 原生的轨迹与工具详情插件。它把输入、可见思�
 - **查看完整详情**：概述、原始参数、工具结果、可用的 Schema 与计时分栏呈现，支持代码高亮、Markdown 和原始 JSON 切换。
 - **查看可见思考**：只展示 Pi 实际提供的内容；不把签名当作思考，也不补造模型未返回的内容。
 - **搜索与回放**：详情内搜索，从当前会话分支恢复轨迹及已保存的计时数据。
-- **观察工作状态**：月相动画、阶段短语、可见回复中的旁白、并行工具数量和完成统计。
+- **观察工作状态**：π 点阵动画、阶段短语、可见回复中的旁白、并行工具数量和完成统计。
 - **适应终端布局**：宽屏左右分栏、窄屏上下排列，使用 Pi 主题配色；隐藏轨迹时仍继续记录。
 
 ## 选择一个版本
@@ -35,7 +35,7 @@ pitools 是 Pi 原生的轨迹与工具详情插件。它把输入、可见思�
 
 - 已安装兼容的 Pi，Node.js ≥ 22.19。
 - Git 安装方式需要 Git；也可使用 Release 成品归档。
-- 0.1.12 的跨平台构建与加载器验收使用 Node 24.12.0 / Pi 1.0.4。
+- 跨平台构建与加载器验收使用 Node 24.12.0 / Pi 1.0.4。
 
 Rust 成品包包含：
 
@@ -93,7 +93,7 @@ pi install git:github.com/ZSY007/pitools-ts
 
 ### 不使用 Git
 
-从 [Release](https://github.com/ZSY007/pitools/releases/tag/v0.1.12) 下载所选版本的 `.tgz`，对照 `SHA256SUMS` 校验，解压到稳定目录，再安装该目录，例如：
+从 [Release](https://github.com/ZSY007/pitools/releases/tag/v0.1.13) 下载所选版本的 `.tgz`，对照 `SHA256SUMS` 校验，解压到稳定目录，再安装该目录，例如：
 
 ```sh
 pi install /absolute/path/pitools-ts
@@ -130,23 +130,26 @@ macOS 终端的 Option 键若默认输入特殊字符，可将其设为 Meta / E
 ### 首行工作状态
 
 ```text
-● 🌗 ⏵ 检查工具结果 · 总21s  │  pitools · 第 3 轮 · 12 个事件
-● 🌑 ⏵ 待机中 · 等待任务  │  pitools · 第 0 轮 · 0 个事件
+● π ··· ⏵ 检查工具结果 · 总21s  │  pitools · 第 3 轮 · 12 个事件
+● π     ⏵ 待机中 · 等待任务     │  pitools · 第 0 轮 · 0 个事件
 ```
 
 活动信息位于最左侧，文字统一使用主题强调色；只有 `●` 表示状态：
 
-- **灰色**：待机或运行中。
+- **蓝色**：待机或运行中。
 - **绿色**：任务结束。
 - **红色**：最近出现工具失败或请求错误，不一定表示整项任务失败。
 
-默认使用 `moon8` 八帧月相，动画间隔 120ms，支持 35 套帧及 `random`。待机与完成后保持静态，不继续运行动画时钟。
+默认使用 `pi`：固定 `π` 标识，旁边三格小点每 240ms 依次出现，整项始终占五列，不让后面的文字左右跳。仅运行时动画；待机与完成后清空小点，保留静止 `π`，不继续运行动画时钟。
+
+原有 35 套预设全部保留，月相可用 `frames moon8` 选回；`random` 仍按原来的顺序与时间槽从这 35 套中选择。已保存的帧偏好不被升级强制覆盖；当前分支如仍使用月相，可执行 `/pitools activity frames pi`。
 
 旁白只提取可见回复中行首的 `⏵`，不读取隐藏思考或签名，不改写原始回复。默认通过独立提示词 section 约定旁白格式，可单独关闭。
 
 ```text
 /pitools activity help
 /pitools activity frames list
+/pitools activity frames pi
 /pitools activity frames moon8
 /pitools activity frames random
 /pitools activity lang zh
@@ -185,7 +188,7 @@ pi remove git:github.com/ZSY007/pitools-ts
 
 Python/Rust 使用各自来源。更新后手动 `/reload`，再检查 `/pitools version`。
 
-**不要用裸 `pi update` 更新插件：它更新 Pi 自身。** `pi update --extensions` 会更新所有已安装包；只想更新 pitools 时应指定完整来源。需要固定版本可使用 `git:github.com/ZSY007/pitools-ts@v0.1.12`；tag/commit 安装不会随默认分支更新。
+**不要用裸 `pi update` 更新插件：它更新 Pi 自身。** `pi update --extensions` 会更新所有已安装包；只想更新 pitools 时应指定完整来源。需要固定版本可使用 `git:github.com/ZSY007/pitools-ts@v0.1.13`；tag/commit 安装不会随默认分支更新。
 
 ## 数据与安全边界
 

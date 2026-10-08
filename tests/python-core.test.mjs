@@ -33,7 +33,7 @@ test('missing interpreter keeps the TS core and reports it once', async () => {
   const core = new ActivityCore({ onChange() {}, onFallback: c => fallbacks.push(c), resolve: () => undefined });
   assert.equal(await core.usePython(), 'python_not_found');
   assert.equal(core.effective, 'ts');
-  assert.equal(core.line(0), '🌑 ⏵ 待机中 · 等待任务');
+  assert.equal(core.line(0), 'π     ⏵ 待机中 · 等待任务');
   assert.deepEqual(fallbacks, []);
 });
 
@@ -96,7 +96,7 @@ function fakeWorker(body) {
   return { file, cleanup: () => fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 50 }) }; // Windows may release a killed child's handles late.
 }
 const HELLO = `line = sys.stdin.readline()\n`;
-const READY = `${HELLO}sys.stdout.write(json.dumps({"protocol":1,"type":"ready","version":"0.1.12","python":"fake"})+"\\n"); sys.stdout.flush()\n`;
+const READY = `${HELLO}sys.stdout.write(json.dumps({"protocol":1,"type":"ready","version":"0.1.13","python":"fake"})+"\\n"); sys.stdout.flush()\n`;
 
 test('cancelled startup settles promptly and cannot clear a subsequent startup', needsPython, async () => {
   const fake = fakeWorker('import time\ntime.sleep(60)');

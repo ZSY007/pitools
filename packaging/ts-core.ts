@@ -1,7 +1,7 @@
 // Pure TS edition adapter. No child_process, executable resolution or worker transport.
 import { ActivityState } from './activity.ts';
 import { visibleTextTail } from './core.ts';
-export const PYTHON_CORE_VERSION = '0.1.12';
+export const PYTHON_CORE_VERSION = '0.1.13';
 export const RUST_CORE_VERSION = PYTHON_CORE_VERSION;
 export class ActivityCore {
   ts = new ActivityState();

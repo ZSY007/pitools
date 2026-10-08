@@ -57,6 +57,7 @@ test('edition READMEs describe their fixed defaults, correct install sources and
   assert.ok(!text.includes('默认仍是 TS')&&!text.includes('三份备份'));
   assert.ok(text.includes('完整结果')&&text.includes('Alt+,')&&text.includes('/pitools core status'));
   assert.ok(text.includes('我们借鉴了 DeepSeek Harness 的轨迹工具（Trajectory）'));
+  assert.ok(text.includes('默认 `pi`')&&text.includes('蓝色待机/运行')&&text.includes('240ms'));
   assert.ok(text.indexOf('DeepSeek Harness')<text.indexOf('## 功能'),'design credit is prominent');
   assert.equal(text.split('```').length%2,1,'balanced fenced code blocks');
   if(edition==='rust'){assert.ok(text.includes('glibc ≥ 2.34'));assert.ok(text.includes('Apple Silicon'));assert.ok(text.includes('Unicode 版本为 16.0'));}

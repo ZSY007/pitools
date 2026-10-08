@@ -11,6 +11,16 @@ pub struct Preset {
     pub frames: Pool,
     pub interval_ms: f64,
 }
+// Project-owned π preset; leave the 35 licensed/generated presets untouched.
+const PI_REST: &[u16] = &[960, 32, 32, 32, 32];
+static PI_PRESET: Preset = Preset {
+    frames: &[
+        &[960, 32, 183, 32, 32],
+        &[960, 32, 183, 183, 32],
+        &[960, 32, 183, 183, 183],
+    ],
+    interval_ms: 240.0,
+};
 pub struct Presets(pub &'static [(&'static str, Preset)]);
 pub struct Tier {
     pub at_ms: f64,
@@ -45,6 +55,9 @@ impl Data {
         [generated::PHRASES_SHA256, generated::FRAMES_SHA256]
     }
     pub fn preset(&self, name: &str) -> &Preset {
+        if name == "pi" {
+            return &PI_PRESET;
+        }
         &self.presets.0.iter().find(|(n, _)| *n == name).unwrap().1
     }
     fn language(&self, lang: &str) -> &'static LanguageData {
@@ -88,7 +101,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             enabled: true,
-            frames: "moon8".into(),
+            frames: "pi".into(),
             lang: "zh".into(),
             narrate: true,
             contract: true,
@@ -99,13 +112,14 @@ impl Default for Config {
 impl Config {
     fn normalized(mut self, data: &Data) -> Self {
         if self.frames != "random"
+            && self.frames != "pi"
             && !data
                 .presets
                 .0
                 .iter()
                 .any(|(n, _)| *n == self.frames.as_str())
         {
-            self.frames = "moon8".into();
+            self.frames = "pi".into();
         }
         if !matches!(self.lang.as_str(), "zh" | "en" | "auto") {
             self.lang = "zh".into();
@@ -309,7 +323,7 @@ impl State {
             failure: false,
             tokens: 0.0,
             seen: HashSet::new(),
-            preset: "moon8".into(),
+            preset: "pi".into(),
         }
     }
     pub fn live(&self) -> bool {
@@ -622,6 +636,9 @@ impl State {
         )
     }
     pub fn frame(&self, now: f64) -> JsString {
+        if !self.live() && self.preset == "pi" {
+            return JsString(PI_REST.to_vec());
+        }
         let preset = self.data.preset(&self.preset);
         if preset.frames.is_empty() {
             return JsString::default();
@@ -637,7 +654,9 @@ impl State {
             return JsString::default();
         }
         let lang = self.lang();
-        let frame = if self.phase == "idle" {
+        let frame = if !self.live() && self.preset == "pi" {
+            PI_REST
+        } else if self.phase == "idle" {
             self.data
                 .preset(&self.preset)
                 .frames
@@ -797,16 +816,17 @@ impl State {
         self.failure = s.failure;
         self.tokens = s.output_tokens;
         self.seen = s.seen_message_keys.into_iter().collect();
-        self.preset = if self
-            .data
-            .presets
-            .0
-            .iter()
-            .any(|(n, _)| *n == s.preset_name.as_str())
+        self.preset = if s.preset_name == "pi"
+            || self
+                .data
+                .presets
+                .0
+                .iter()
+                .any(|(n, _)| *n == s.preset_name.as_str())
         {
             s.preset_name
         } else {
-            "moon8".into()
+            "pi".into()
         };
     }
 }
@@ -822,6 +842,39 @@ mod tests {
         assert_eq!(js_num(1e-7), "1e-7");
         assert_eq!(js_num(1e21), "1e+21");
         assert_eq!(js_num(12.5), "12.5");
+    }
+    #[test]
+    fn pi_dots_have_fixed_width_and_static_rest_without_new_wakes() {
+        let mut s = State::new(Data::load().unwrap(), "zh-CN".into());
+        assert_eq!(s.config.frames, "pi");
+        assert_eq!(s.line(0.0), s.line(99999.0));
+        assert_eq!(s.next_wake(0.0), None);
+        s.begin(1000.0, [2026, 4, 17, 5, 12]);
+        for (i, frame) in ["π ·  ", "π ·· ", "π ···", "π ·  "].iter().enumerate() {
+            assert_eq!(s.frame(1000.0 + i as f64 * 240.0), JsString::from(*frame));
+            assert_eq!(s.frame(1000.0 + i as f64 * 240.0).0.len(), 5);
+        }
+        s.finish(1750.0, "");
+        assert_eq!(s.frame(1750.0), JsString::from("π    "));
+        assert_eq!(s.line(1750.0), s.line(99999.0));
+        assert_eq!(s.next_wake(1750.0), None);
+        s.configure(Config {
+            frames: "moon8".into(),
+            ..Config::default()
+        });
+        s.begin(2000.0, [2026, 4, 17, 5, 12]);
+        assert_eq!(s.frame(2120.0), JsString::from("🌒"));
+        s.configure(Config {
+            frames: "random".into(),
+            ..Config::default()
+        });
+        for now in [0.0, 1000.0, 123456.0] {
+            s.begin(now, [2026, 4, 17, 5, 12]);
+            assert_eq!(
+                s.preset,
+                s.data.presets.0[mix_slot(now, 123.0) as usize % 35].0
+            );
+        }
     }
     #[test]
     fn preset_order_is_not_a_sorted_map() {
