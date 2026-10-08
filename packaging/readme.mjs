@@ -22,6 +22,8 @@ export function editionReadme({edition,version,rustTargets=[],glibcMin}) {
 
 ${profile.description}
 
+**我们借鉴了 DeepSeek Harness 的轨迹工具（Trajectory）**，尤其是轨迹视图的组织方式和工具详情的交互设计，并基于 Pi 原生终端能力独立实现了这套体验。感谢 DeepSeek Harness 带来的设计启发。
+
 ## 功能
 
 - 浏览输入、可见思考、模型回复和工具调用，支持跟随最新事件与历史回放。
