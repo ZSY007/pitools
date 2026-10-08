@@ -97,7 +97,7 @@ pi install git:github.com/ZSY007/pitools-ts
 pi install /absolute/path/pitools-ts
 ```
 
-Windows 可使用对应的绝对路径。请选择具名成品归档；GitHub 自动生成的源码 ZIP 不包含 Rust 成品 binary。本地目录安装不会自动跟随 Git 更新。
+Windows 可使用对应的绝对路径。请选择具名成品归档；主仓库 `ZSY007/pitools` 的源码 ZIP 不包含 Rust 成品 binary。本地目录安装不会自动跟随 Git 更新。
 
 ## 日常使用
 
