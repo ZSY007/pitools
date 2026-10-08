@@ -9,6 +9,7 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {ActivityCore as DevelopmentCore} from '../python-core.ts';
 import {drive} from './activity-scenarios.mjs';
+import {editionReadme} from '../packaging/readme.mjs';
 const build=fileURLToPath(new URL('../scripts/package-editions.mjs',import.meta.url));
 function packages(){const out=fs.mkdtempSync(path.join(os.tmpdir(),'pitools-editions-'));execFileSync(process.execPath,[build,'--out',out,'--only','ts,python']);return out;}
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -45,6 +46,21 @@ test('pure TS edition facade matches the real default facade over deterministic 
   }
   assert.ok(views>3000);
  }finally{fs.rmSync(out,{recursive:true,force:true});}
+});
+
+test('edition READMEs describe their fixed defaults, correct install sources and actual Rust requirements',()=>{
+ for(const edition of ['ts','python','rust']){
+  const text=editionReadme({edition,version:'0.1.12',rustTargets:['x86_64-pc-windows-msvc','aarch64-apple-darwin','x86_64-apple-darwin','x86_64-unknown-linux-gnu'],glibcMin:'2.34'});
+  assert.ok(text.includes(`pi install git:github.com/ZSY007/pitools-${edition}`));
+  assert.ok(text.includes(`pi update git:github.com/ZSY007/pitools-${edition}`));
+  assert.ok(text.includes(`本包默认活动核心为 **${edition==='ts'?'TS':edition==='python'?'Python':'Rust'}**`));
+  assert.ok(!text.includes('默认仍是 TS')&&!text.includes('三份备份'));
+  assert.ok(text.includes('完整结果')&&text.includes('Alt+,')&&text.includes('/pitools core status'));
+  assert.equal(text.split('```').length%2,1,'balanced fenced code blocks');
+  if(edition==='rust'){assert.ok(text.includes('glibc ≥ 2.34'));assert.ok(text.includes('Apple Silicon'));assert.ok(text.includes('Unicode 版本为 16.0'));}
+ }
+ assert.throws(()=>editionReadme({edition:'rust',version:'0.1.12'}),/targets/);
+ assert.throws(()=>editionReadme({edition:'rust',version:'0.1.12',rustTargets:['x86_64-unknown-linux-gnu']}),/libc/);
 });
 
 test('Rust product cannot be emitted as a source-only or mismatched placeholder package',()=>{

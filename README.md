@@ -1,92 +1,149 @@
 # pitools
 
 [![tests](https://github.com/ZSY007/pitools/actions/workflows/test.yml/badge.svg)](https://github.com/ZSY007/pitools/actions/workflows/test.yml)
+[![version](https://img.shields.io/badge/version-0.1.12-blue)](https://github.com/ZSY007/pitools/releases/tag/v0.1.12)
+[![license](https://img.shields.io/badge/license-BSD--3--Clause-green)](LICENSE)
 
-**Pi 终端里的轨迹、工具调用详情和工作状态。** Windows / macOS，终端原生，不打开浏览器。
+**在 Pi 终端里，看清模型做了什么、工具返回了什么，以及任务进行到哪里。**
 
-当前版本 **0.1.12**，提供 TS / Python / Rust 三个独立安装包。独立实现，界面参考 DeepSeek Harness 的 Trajectory。
+pitools 是 Pi 原生的轨迹与工具详情插件。它把输入、可见思考、模型回复和工具调用整理成可浏览的事件列表，支持完整详情、搜索和历史回放，并在首行显示实时工作状态。无需打开浏览器，不替换 Pi 原生编辑器、页脚或工作行。
 
-## 安装与更新
+提供 **TS / Python / Rust 三个独立安装版本**，共用同一套界面与快捷键。本仓库维护共享源码、技术文档和构建流水线；日常使用请选择下面的成品包。
 
-需要 Node >= 22.19、Git，以及兼容的 Pi。已验证 Windows Pi 1.0.4；历史版本另在 Pi 1.0.0 / 1.0.2 验证。
+## 能做什么
 
-0.1.12 分成三个独立产品，**三选一，不要同时安装**：
+- **浏览任务轨迹**：输入蓝色、模型紫色、工具橙色，失败红色；支持跟随最新事件和手动选择。
+- **查看完整详情**：概述、原始参数、工具结果、可用的 Schema 与计时分栏呈现，支持代码高亮、Markdown 和原始 JSON 切换。
+- **查看可见思考**：只展示 Pi 实际提供的内容；不把签名当作思考，也不补造模型未返回的内容。
+- **搜索与回放**：详情内搜索，从当前会话分支恢复轨迹及已保存的计时数据。
+- **观察工作状态**：月相动画、阶段短语、可见回复中的旁白、并行工具数量和完成统计。
+- **适应终端布局**：宽屏左右分栏、窄屏上下排列，使用 Pi 主题配色；隐藏轨迹时仍继续记录。
+
+## 选择一个版本
+
+| 版本 | 默认活动核心 | 额外要求 | 适合谁 |
+|---|---|---|---|
+| [pitools-ts](https://github.com/ZSY007/pitools-ts) | TS | 无 Python/Rust 要求，不启动 worker | 推荐默认选择，安装最简单 |
+| [pitools-python](https://github.com/ZSY007/pitools-python) | Python | 已安装 Python 3.11+，仅用标准库 | 想使用 Python 活动核心 |
+| [pitools-rust](https://github.com/ZSY007/pitools-rust) | Rust | 自带匹配平台的可执行文件，无需 Cargo/Python | 想使用原生 Rust 活动核心 |
+
+**三选一，不要同时安装。** 三个版本的功能与界面一致，区别只在首行活动状态的计算后端。轨迹、详情、搜索、主题和渲染都由 TS/Pi 实现；Python/Rust 并不是把整个插件换成另一种语言，也不意味着整体 CPU 或内存更低。
+
+### 环境要求
+
+- 已安装兼容的 Pi，Node.js ≥ 22.19。
+- Git 安装方式需要 Git；也可使用 Release 成品归档。
+- 0.1.12 的跨平台构建与加载器验收使用 Node 24.12.0 / Pi 1.0.4。
+
+Rust 成品包包含：
+
+| 平台 | 架构 | target |
+|---|---|---|
+| Windows | x64 | `x86_64-pc-windows-msvc` |
+| macOS | Apple Silicon / arm64 | `aarch64-apple-darwin` |
+| macOS | Intel / x64 | `x86_64-apple-darwin` |
+| Linux GNU | x64 | `x86_64-unknown-linux-gnu` |
+
+当前 Linux binary 要求 **glibc ≥ 2.34**，不包含 musl 版。Rust 核心要求宿主 Node 的 Unicode 版本为 **16.0**；已验证 Node 24.12.0。不支持的平台或版本不匹配会明确提示并回退 TS，不在运行时下载或编译。
+
+## 安装
+
+### 推荐：TS 版
 
 ```sh
 pi install git:github.com/ZSY007/pitools-ts
-# 或：pi install git:github.com/ZSY007/pitools-python
-# 或：pi install git:github.com/ZSY007/pitools-rust
 ```
 
-- TS：推荐，无 worker、无需 Python/Rust。
-- Python：安装后在交互会话自动使用 Python 活动核心；需要 Python 3.11+，不自动安装解释器。
-- Rust：附带经过平台构建/测试的 executable，自动选择匹配平台；无需 Cargo/Python，不让普通用户编译。
-
-三个包的界面代码完全相同，不是三份备份。当前仓库维护共享源码与构建流水线，成品在三个独立仓库/Release 中分发。旧 `git:github.com/ZSY007/pitools` 先移除声明，再安装目标版；完整迁移见 [三包指南](docs/editions.md)。
-
-之后只更新选中的包，例如 TS：
+### 其他版本：二选一
 
 ```sh
-pi update git:github.com/ZSY007/pitools-ts
+# Python 版：需要 Python 3.11+
+pi install git:github.com/ZSY007/pitools-python
 ```
 
-然后在运行中的 Pi 输入：
+```sh
+# Rust 版：已附带平台 binary，无需自己编译
+pi install git:github.com/ZSY007/pitools-rust
+```
+
+安装完成后，先停止正在进行的生成，再在 Pi 中执行：
 
 ```text
 /reload
 /pitools version
+/pitools core status
 ```
 
-入口、核心、渲染、活动、数据五项应全部显示同一版本。Git 更新改变磁盘代码，不会自动替换运行中的扩展。
+`version` 查看已加载的版本和包类型，`core status` 查看实际使用的活动核心。安装或更新文件不会自动重载当前会话。
 
-**不要把单独的 `pi update` 当成插件更新命令：它更新 Pi 本身。** 需要跟随最新代码时使用上面不带 tag 的 Git 来源；指定 tag/commit 的安装是固定版本。
+### 从旧版或另一版本迁移
 
-如果之前把 pitools 手工复制到了 `~/.pi/agent/extensions/pitools`，先备份并移出自动发现目录，再安装 Git 包，避免加载两份。迁移、回滚和卸载见 [安装指南](docs/installation.md)。不需要另装 npm 包，也不要复制其他机器的账号或会话。
+先用 `pi list` 确认当前来源。若安装的是旧的共享包：
 
-## 界面与快捷键
-
-- 常驻轨迹：输入蓝、模型紫、工具橙，失败红。
-- `Alt+T` 隐藏/显示轨迹；隐藏时继续记录。
-- `Alt+,` / `Alt+.` 选择上一/下一事件。
-- `Alt+I` 或 `/pitools` 打开轨迹列表和完整详情。
-- 宽终端左右分栏，窄终端上下排列。
-- 详情里 `←→` 选事件、`Tab` 换页签、`↑↓` / `PgUp` / `PgDn` 滚动、`/` 搜索、`R` 切换渲染/原始 JSON、`Esc` 返回。
-- 工具显示命令/路径/参数摘要和输出；参数、结果、Schema、计时可完整查看。
-- Shell / 代码高亮，Markdown 代码块渲染。单段超过 200,000 字符时保留全文、回退纯文本，避免高亮阻塞。
-
-```text
-/pitools help
-/pitools on
-/pitools off
-/pitools live
-/pitools prev
-/pitools next
-/pitools version
+```sh
+pi remove git:github.com/ZSY007/pitools
+pi install git:github.com/ZSY007/pitools-ts
 ```
 
-Mac 的 Option 键可能默认输入特殊字符；可以在终端中设置为 Meta / Esc+，也可以直接使用上述命令。
+切换 Python/Rust 版时，把安装命令换成对应来源；已安装独立版时，先 `pi remove` 该版本，再安装目标版本。
 
-## 工作状态
+若是手工目录 `~/.pi/agent/extensions/pitools`，先备份并**移出自动发现目录**，再安装成品包。不要只在 `extensions` 下改名，也不要保留旧包与新包同时加载。详细步骤见 [迁移指南](docs/editions.md#从旧-pitools-或另一版迁移)。
 
-状态位于轨迹首行最左侧，统计紧随其后：
+### 不使用 Git
+
+从 [Release](https://github.com/ZSY007/pitools/releases/tag/v0.1.12) 下载所选版本的 `.tgz`，对照 `SHA256SUMS` 校验，解压到稳定目录，再安装该目录，例如：
+
+```sh
+pi install /absolute/path/pitools-ts
+```
+
+Windows 可使用对应的绝对路径。请选择具名成品归档；GitHub 自动生成的源码 ZIP 不包含 Rust 成品 binary。本地目录安装不会自动跟随 Git 更新。
+
+## 日常使用
+
+### 轨迹与详情
+
+| 操作 | 快捷键 / 命令 |
+|---|---|
+| 显示或隐藏轨迹 | `Alt+T` |
+| 打开轨迹列表与完整详情 | `Alt+I` 或 `/pitools` |
+| 选择上一 / 下一事件 | `Alt+,` / `Alt+.` |
+| 恢复跟随最新事件 | `/pitools live` |
+| 开启 / 关闭轨迹 | `/pitools on` / `/pitools off` |
+| 查看帮助 | `/pitools help` |
+
+详情窗口中：
+
+| 操作 | 按键 |
+|---|---|
+| 切换事件 | `←` / `→` |
+| 切换概述、参数、结果、Schema、计时页签 | `Tab` |
+| 滚动内容 | `↑` / `↓` / `PgUp` / `PgDn` |
+| 搜索 | `/` |
+| 切换渲染内容 / 原始 JSON | `R` |
+| 返回 | `Esc` |
+
+macOS 终端的 Option 键若默认输入特殊字符，可将其设为 Meta / Esc+；也可以直接使用命令。
+
+### 首行工作状态
 
 ```text
 ● 🌗 ⏵ 检查工具结果 · 总21s  │  pitools · 第 3 轮 · 12 个事件
 ● 🌑 ⏵ 待机中 · 等待任务  │  pitools · 第 0 轮 · 0 个事件
 ```
 
-- 默认 moon8：八帧、120ms；支持 35 套帧和 random。
-- 新会话显示静止月亮与待机标签，不虚构任务耗时。任务结束保留静止月相、最近真实可见旁白及实际总耗时；待机/完成没有动画时钟。
-- 标题文字统一主题 accent。只有 `●` 变色：灰为待机/运行、绿为结束、红为最近工具失败或请求错误。红不一定代表整个任务失败；下方事件分类颜色不变。
-- 只从可见 text 的行首 `⏵` 提取旁白，不读取 thinkingSignature，不用隐藏思考当旁白。流式旁白采用最近 300 字符、80 列上限，5 秒无流动回退阶段短语；原始回复不删改。
-- 默认向独立的 `pitools_activity` 提示词 section 注入中/英旁白约定，不替换其他插件的 section。可单独关闭 contract。
-- 并行工具按完整调用 ID 配对；短语按确定性时间槽选择，保留中/英有序工具动作表。
-- 使用独立 widget；不替换原生工作行、页脚或编辑器。
+活动信息位于最左侧，文字统一使用主题强调色；只有 `●` 表示状态：
+
+- **灰色**：待机或运行中。
+- **绿色**：任务结束。
+- **红色**：最近出现工具失败或请求错误，不一定表示整项任务失败。
+
+默认使用 `moon8` 八帧月相，动画间隔 120ms，支持 35 套帧及 `random`。待机与完成后保持静态，不继续运行动画时钟。
+
+旁白只提取可见回复中行首的 `⏵`，不读取隐藏思考或签名，不改写原始回复。默认通过独立提示词 section 约定旁白格式，可单独关闭。
 
 ```text
 /pitools activity help
-/pitools activity on
-/pitools activity off
 /pitools activity frames list
 /pitools activity frames moon8
 /pitools activity frames random
@@ -98,103 +155,75 @@ Mac 的 Option 键可能默认输入特殊字符；可以在终端中设置为 M
 /pitools activity phrases off
 ```
 
-默认中文，auto 使用系统 locale。偏好只通过 Pi 元数据保存到当前会话分支，新会话使用默认值。纯 shell / SSH 窗口没有 Pi 插件界面，需要先运行 `pi`。
+`narrate` 控制旁白显示，`contract` 控制旁白提示词约定，`phrases` 控制阶段短语；这些选项均支持 `on` / `off`。`activity on` / `off` 控制整项活动显示。默认中文，`auto` 使用系统 locale；活动偏好保存到当前会话分支，新会话使用默认值。
 
-## 数据边界与隐私
+### Python / Rust 核心
 
-- 只显示 Pi 实际提供的可见思考；实时空思考显示占位，定稿后仍为空则收起。签名不当作思考，也不把缺失思考 Token 当作零。
-- 输入仅显示提交时间/来源。工具显示执行开始、结束与耗时。模型显示整体消息生命周期、首个非空可见内容 delta 延迟及后续耗时。
-- 模型计时是本地观测，**不是 provider TTFT 或内部推理耗时**。模型计时按精确 messageEntryId 保存，思考/回复行共用，不重复统计 usage。
-- 只从当前会话分支恢复；没有保存的历史计时、Schema、嵌套结果或 Token 数据明确标为不可用，不猜测。
-- 通过 Pi appendEntry 保存计时及偏好，不直接读写会话文件。不修改工具参数/结果，不访问其他会话。
-- 内存约保留最近 2,000 个事件，运行中调用不淘汰。时间轴按事件顺序排列，不是按秒缩放的图；暂不提供鼠标拖选/缩放或图片灯箱。
-- 外部文字上屏前清洗终端控制字符及双向文字控制符。工具已截断的输出无法恢复；图片只显示元信息。
-
-**插件运行时不联网、不读凭证；默认 TS 核心不启动子进程。** 只有用户主动启用可选 Python/Rust 独立包（或在共享开发入口手动启用后端）时，才在交互会话启动一个私有 worker（见下文）。安装/更新的网络操作由 Pi 的包管理 CLI 完成，不在插件内部下载和执行代码。
-
-工具参数/结果本身可能包含敏感内容，分享截图或提交 issue 前请检查；没有自动脱敏。仓库不包含真实会话、账号、日志或机器配置。
-
-## 0.1.12 可选 Rust 活动核心
-
-新增 `/pitools core rust`，默认仍是 TS，也保留 Python。**Rust 独立成品包附带匹配平台 binary，无需用户编译。** 插件不会运行时下载或编译；不支持的平台、binary/Unicode 版本不符或故障都会明确提示并回退 TS。开发者仍可用 `PITOOLS_RUST_CORE` 显式指定可信 executable。
-
-已接入紧凑 delta 编码、查询/绘制共享截止时间、单次类型化解析及许可数据静态生成；保留任意 JS UTF-16 码元、完整事件与同步 TS 回退。**Rust 当前仍不是比 TS 更省资源的默认方案。** 两轮前后对照及独立唯一尾部补测分别保留；93% 是重复文本合成场景的桥接字节降幅，不是整体 CPU 降幅。见 [四项优化测量](docs/0.1.12-rust-optimization-measurement.md)。
-
-成品选择与迁移见 [三包指南](docs/editions.md)，范围和兼容边界见 [0.1.12 Rust 活动核心](docs/0.1.12-rust-activity-core.md)。仍使用 0.1.11 的用户应先更新包，再使用 Rust 命令。
-
-## 0.1.11 可选 Python 活动核心
-
-首行活动（月相、阶段短语、旁白、并行工具、完成统计）的状态机已有 Python 实现，**默认仍是 TS 核心**，需要主动启用：
+安装对应独立版本后，在交互会话开始时自动使用该核心，无需额外设置 `PITOOLS_CORE`。
 
 ```text
 /pitools core status
-/pitools core python
 /pitools core ts
 ```
 
-也可在启动 Pi 前设置 `PITOOLS_CORE=python`，会话开始时启动一次。需要 Python 3.11+，仅用标准库；解释器按 `PITOOLS_PYTHON`（绝对路径或 PATH 上的名称）→ Windows `py -3` / `python` / `python3` → macOS/Linux `python3` / `python` 的顺序显式解析。找不到时提示并继续用 TS，**不会自动安装 Python 或任何包**。
+`core ts` 临时关闭 worker 并使用 TS；重新加载后恢复所装版本的默认核心。Python 包可用 `core python` 手动重试，Rust 包可用 `core rust` 手动重试。独立包不能启动另一个版本的 worker，换后端需要换包。
 
-- Python worker 只负责活动状态；轨迹、详情、搜索、主题、Markdown/高亮渲染仍由 TS 与 Pi 原生实现，界面、快捷键和 widget 名称不变。
-- 私有 stdin/stdout JSONL，`shell:false`、参数数组、`-I -B` 隔离模式、最小环境变量（不转发模型 token / 账号变量），不开 TCP/HTTP，不读会话或凭证，不写文件。只发送活动所需的最小字段：旁白只发可见文本末尾 301 个 UTF-16 单元，工具只发命令/路径等摘要字段。
-- TS 核心持续运行作为回滚：worker 启动失败、崩溃、坏 JSON、版本不符、2 秒无响应或反压超限时，提示一次并回退 TS，**不自动重启**；`/pitools core python` 可手动重试。`session_shutdown` / `/reload` / `core ts` 会结束 worker。
-- `/pitools core status` 显示 worker pid。逐视图 TS 对照默认关闭（会额外耗 CPU），诊断时用 `/pitools core verify on` 或 `PITOOLS_CORE_VERIFY=1` 打开，状态里显示一致/不一致计数。
-- delta 采用有界事件批次（名义 4ms、64KiB/64 条上限），不丢事件或改观测时间；关键事件先冲刷旧 delta。事件全部按序发送，另外合并“观察”：同一时刻最多一个视图请求在途；流式 delta 最多每 120 ms 请求一次视图（与宿主绘制节流一致），工具/消息结束等关键事件立即请求；视图内容不变不重绘；超时看门狗只在有请求在途时运行。
-- 偏好不写入会话；`/reload` 后回到默认 TS，除非设置了 `PITOOLS_CORE=python`。
+Python 解释器无法自动找到时，可用 `PITOOLS_PYTHON` 指定可信解释器的绝对路径或 PATH 名称。Rust 默认选择包内匹配平台的 binary；开发者可用 `PITOOLS_RUST_CORE` 显式指定可信 executable。
 
-worker 是同一用户的本地进程，不是权限沙箱。设计与验证边界见 [0.1.11 Python 活动核心](docs/0.1.11-python-activity-core.md)。
+worker 启动失败、崩溃、协议/版本不符、超时或超预算时，保留 TS 状态并提示回退，不自动重启。诊断时可用 `/pitools core verify on` 开启逐视图 TS 对照；默认关闭，开启会增加计算开销。
 
-## 0.1.10 渲染优化
+## 更新与卸载
 
-结果详情不再重复序列化；内容页签复用未变正文，滚动/月相更新无需重新高亮全文。缓存随更新事件 revision、宽度、模式、主题与组件 invalidate 失效；单条目、8 MiB 估算预算，超预算仍完整显示但不缓存。概述/计时/Schema 保持动态。
+只操作所装版本，例如 TS：
 
-指定 64 KiB 结果详情的隔离对照约 **23.77 ms → 0.83 ms/帧**，渲染输出一致；不是整体 CPU 减少 96% 或总内存保证。实现与验证边界见 [0.1.10 优化记录](docs/0.1.10-render-optimization.md)。
+```sh
+pi update git:github.com/ZSY007/pitools-ts
+pi remove git:github.com/ZSY007/pitools-ts
+```
 
-## 技术文档
+Python/Rust 使用各自来源。更新后手动 `/reload`，再检查 `/pitools version`。
 
-- [当前 0.1.9 性能分析](docs/current-performance-analysis.md)：目前代码的 CPU/内存热点、已有保护及优化顺序；静态分析，不冒充实测。
-- [当前性能 Windows 隔离实测](docs/current-performance-measurement.md)：受控堆增量、详情/流式耗时、异常刷新复现与临时缓存对照；不等于真实会话精确独占占用。
-- [Python 核心替换技术思路](docs/python-migration.md)：接口层分工、内部协议、兼容性、安全边界和分阶段实施。
-- [0.1.11 Python 活动核心](docs/0.1.11-python-activity-core.md)：第一阶段落地范围、协议、对照测试与未迁移部分。
-- [0.1.11 性能对照](docs/0.1.11-performance-comparison.md)：双模式实测、批处理/文本热路径优化与测量边界；不宣称 Python 更省资源。
-- [Rust 可行性调研](docs/rust-feasibility.md)：集成前的协议探针和字符串问题历史记录，不等于当前实现的性能。
-- [0.1.12 Rust 活动核心](docs/0.1.12-rust-activity-core.md)：显式 opt-in、UTF-16、紧凑协议、调度与故障边界。
-- [0.1.12 四项优化测量](docs/0.1.12-rust-optimization-measurement.md)：独立前后轮次、唯一尾部补测与性能限定。
+**不要用裸 `pi update` 更新插件：它更新 Pi 自身。** `pi update --extensions` 会更新所有已安装包；只想更新 pitools 时应指定完整来源。需要固定版本可使用 `git:github.com/ZSY007/pitools-ts@v0.1.12`；tag/commit 安装不会随默认分支更新。
 
-## 开发与验证
+## 数据与安全边界
+
+- 展示宿主实际提供的数据。未保存的历史计时、缺失的思考/Schema/Token 标为不可用，不猜测或补造。
+- 模型计时是本地消息生命周期与首个非空可见内容的观测，**不是 provider TTFT 或模型内部推理耗时**；不重复统计 usage。
+- 从当前会话分支恢复数据，通过 Pi 元数据 API 保存计时与偏好，不直接读写其他会话文件。
+- 内存约保留最近 2,000 个事件，运行中调用不淘汰。详情不会为适配 worker 或缓存而裁剪原始参数/结果；宿主已经截断的输出无法恢复，图片仅展示元信息。
+- 外部文字上屏前清洗终端控制字符与双向文字控制符；长内容无法安全高亮时回退纯文本，保留全文。
+- 插件运行时不联网、不读凭证。TS 版不启动子进程；Python/Rust 通过私有 stdin/stdout 管道工作，不监听 TCP/HTTP、不自动安装解释器或编译器。
+- worker 与 Pi 使用同一用户权限，**不是安全沙箱**。工具参数/结果可能含敏感内容，分享截图或 issue 前请检查，没有自动脱敏。
+
+## 文档与开发
+
+- [三包安装、迁移与分发](docs/editions.md)
+- [Rust 活动核心：协议、UTF-16 与故障处理](docs/0.1.12-rust-activity-core.md)
+- [Rust 优化测量：分场景、分轮次与性能限定](docs/0.1.12-rust-optimization-measurement.md)
+- [Python 活动核心与实现范围](docs/0.1.11-python-activity-core.md)
+- [Python 性能对照](docs/0.1.11-performance-comparison.md)
+- [详情渲染缓存与测量](docs/0.1.10-render-optimization.md)
+
+历史性能报告来自对应开发入口和指定工作负载，不等于三个成品包重新实测或整个插件的资源降幅。TS 仍是推荐默认选择。
+
+开发验证：
 
 ```sh
 git clone https://github.com/ZSY007/pitools.git
 cd pitools
 npm test
+python -B -m unittest discover -s python/tests
+node scripts/gen-rust-assets.mjs --check
+cargo test --release --locked --manifest-path rust/pitools-core/Cargo.toml
+cargo build --release --locked --manifest-path rust/pitools-core/Cargo.toml
 ```
 
-82 项 Node 测试无需 npm install；Python worker 测试在找不到解释器时跳过（可用 `PITOOLS_PYTHON` 指定），真实 Rust worker 测试需要显式设置 `PITOOLS_RUST_CORE`。Python 侧：
+真实 Rust worker 的 Node 测试需要用 `PITOOLS_RUST_CORE` 指定已构建的 executable；未提供时会明确跳过，不能将跳过视作通过。Python 测试需要可用解释器。宿主加载器验证见 [三包指南](docs/editions.md#构建与发布门禁) 及 `scripts/verify-*.mjs`。
 
-```sh
-python -m unittest discover -s python/tests
-```
+[0.1.12 发布构建](https://github.com/ZSY007/pitools/actions/runs/37705289466) 通过 82 项 Node、13 项 Python、19 项 Rust release 测试及 Windows / macOS arm64+x64 / Linux 的原生构建、模块化与 bundled Pi 加载器验收。CI 不替代用户实际终端、HUD 或长会话验收。
 
-首轮三包 CI 八项全绿：Windows x64、macOS arm64/x64、Linux x64 的真 worker、模块化/bundled Pi loader 与四 target 汇集均通过。配置使用 Node 24.12.0、Python 3.11/3.13，不访问真实模型或用户会话；执行状态见顶部 Actions badge。Linux 最低 glibc 写在成品 README/build-info 中，不承诺未验证发行版。CI 不等于用户实际终端/compositor 长测。
+## 许可
 
-实际宿主回归需设置 `PI_HOST_ROOT` 为已安装的 `@earendil-works/pi-coding-agent` 包目录：
+项目采用 [BSD-3-Clause](LICENSE)。活动短语、动画帧、语言模板及派生的 `mixSlot` 算法来自 **dsh-working-activity 0.5.1**，保留 1,241 条短语和 35 套帧。
 
-```sh
-node scripts/verify-host.mjs
-node scripts/verify-reload.mjs
-```
-
-设置 `PI_BUNDLED_LOADER=1` 可测试 bundled 加载器；`PI_EXTENSION_ENTRY` 可指定安装后的 index.ts。覆盖真实 Theme / Markdown / 高亮 / 主屏与全屏 TUI（底层内存终端）、深浅色与真彩/256 色、窄屏、流式事件、空思考、计时回放、搜索、隐藏、异常隔离及重复关闭。
-
-0.1.12 已在 Windows Node 24.12.0 / Pi 1.0.4 验证；历史版本在 Windows Pi 1.0.2 与 Darwin arm64 Node 26.10.0 / Pi 1.0.0 验证。尚未完成用户 Mac 的 0.1.12 实际宿主验收。字体和 emoji 的最终视觉效果以实际终端为准。
-
-运行时模块均使用 `.ts`，避免同进程热重载沿用旧 `.mjs` 导出。升级应替换完整包；模块版本不一致时在加载阶段 fail-fast，不注册会反复报错的事件处理器。
-
-## 许可与署名
-
-项目采用 [BSD-3-Clause](LICENSE)。活动短语、帧、提示词模板及派生的 mixSlot 算法来自 **dsh-working-activity 0.5.1**：
-
-Copyright (c) 2026, chimney (ccch1mneyyy)，BSD-3-Clause。
-
-原始数据含 1,241 条短语和 35 套帧，完整上游许可保留在 [data/activity/LICENSE](data/activity/LICENSE)，归属说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。不宣称上游作者认可或背书。
-
-对其他 UI 插件的独立本地补丁不属于本仓库，也不是 pitools 的运行依赖；更新 pitools 不会覆盖它们。
+Copyright (c) 2026, chimney (ccch1mneyyy)。上游 BSD-3-Clause 许可见 [data/activity/LICENSE](data/activity/LICENSE)，完整归属见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。Rust 成品包同时附带依赖许可证与标准库 copyright。不代表上游作者背书。
